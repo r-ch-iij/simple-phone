@@ -1,5 +1,8 @@
 MIT License
 
+本ライセンスは自社コードに適用されます。`kyf42-phone/native/` 配下の
+第三者ライブラリには各々のライセンスが適用されます（`THIRD-PARTY-NOTICES.md` 参照）。
+
 Copyright (c) 2026 Tokyo Wide Area Telephony Network <tkytel@googlegroups.com>
 Copyright (c) 2026 Sumire Isshiki <i@yude.jp>
 
