@@ -48,7 +48,7 @@ SIP サーバのアドレス・内線番号・パスワード等の実運用値�
 | SIP スタック | **baresip** | 3.10.0（fork 9bee1e0） | SIP UA / 通話制御 / メディアネゴシエーション |
 | ポータブル基盤 | **re**（baresip 付属） | fork 9c625b0 | イベントループ / ソケット / ハッシュ / SIP メッセージ等 |
 | メディア基盤 | **rem**（baresip 付属） | fork edbdc31 | オーディオバッファ / リサンプル / コーデック補助 |
-| TLS / 暗号 | **Mbed TLS** | 2.28.8（fork 5a764e5） | SIP over TLS 用の暗号・ハッシュ（mbedTLS v2.28 API に対応） |
+| TLS / 暗号 | **Mbed TLS** | 2.28.8（fork 5a764e5） | SIPダイジェスト認証用のハッシュ（libmbedcrypto のみ。TLSトランスポート自体は無効） |
 | オーディオ | **Android OpenSL ES** | NDK 標準 API | 再生・録音（PCM デジタルゲインで音量増幅） |
 | UI フレームワーク | **AndroidX** | core-ktx 1.10.1 / appcompat 1.6.1 / material 1.9.0 | 設定画面・互換 UI |
 | 言語 | **Kotlin** | 1.9.0 | アプリ実装（JVM target 1.8） |
