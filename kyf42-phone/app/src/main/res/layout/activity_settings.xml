@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SIP アカウント設定"
+            android:textSize="24sp"
+            android:textColor="#000000"
+            android:paddingBottom="16dp" />
+
+        <Button
+            android:id="@+id/setQrImport"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="QRコードから設定を読み取る"
+            android:textSize="18sp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="サーバ"
+            android:textSize="16sp"
+            android:textColor="#888888" />
+        <EditText
+            android:id="@+id/setServer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:inputType="text" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ポート"
+            android:textSize="16sp"
+            android:textColor="#888888"
+            android:paddingTop="8dp" />
+        <EditText
+            android:id="@+id/setPort"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:inputType="number" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ユーザー名（内線番号）"
+            android:textSize="16sp"
+            android:textColor="#888888"
+            android:paddingTop="8dp" />
+        <EditText
+            android:id="@+id/setUser"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:inputType="text" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="パスワード"
+            android:textSize="16sp"
+            android:textColor="#888888"
+            android:paddingTop="8dp" />
+        <EditText
+            android:id="@+id/setPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:inputType="textPassword" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="レルム（通常 asterisk）"
+            android:textSize="16sp"
+            android:textColor="#888888"
+            android:paddingTop="8dp" />
+        <EditText
+            android:id="@+id/setRealm"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:inputType="text" />
+
+        <CheckBox
+            android:id="@+id/setVibrate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="着信時にバイブレーション"
+            android:textColor="#000000"
+            android:textSize="18sp"
+            android:paddingTop="16dp" />
+
+        <Button
+            android:id="@+id/setRingtone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="着信音：デフォルト"
+            android:textSize="18sp"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="通話音量（スピーカー出力の増幅）"
+            android:textSize="16sp"
+            android:textColor="#888888"
+            android:paddingTop="16dp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <SeekBar
+                android:id="@+id/setVolume"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:min="50"
+                android:max="250"
+                android:progress="150" />
+            <TextView
+                android:id="@+id/setVolumeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="150%"
+                android:textSize="18sp"
+                android:textColor="#000000"
+                android:paddingStart="8dp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="キー機能（タップで変更）"
+            android:textSize="16sp"
+            android:textColor="#888888"
+            android:paddingTop="16dp" />
+
+        <Button
+            android:id="@+id/setKey1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="左上 無効"
+            android:textSize="18sp" />
+        <Button
+            android:id="@+id/setKey2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="右上 無効"
+            android:textSize="18sp" />
+        <Button
+            android:id="@+id/setKey3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="左下 無効"
+            android:textSize="18sp" />
+        <Button
+            android:id="@+id/setKey4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="右下 無効"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/setSave"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="設定保存"
+            android:textSize="20sp"
+            android:paddingTop="16dp" />
+
+    </LinearLayout>
+</ScrollView>

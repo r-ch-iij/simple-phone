@@ -1,0 +1,16 @@
+# APK ファイル（再配布物のため git 管理外。入手して kyf42-apks/ に置いて使う）
+*.apk
+*.xapk
+!kyf42-apks/.gitkeep
+
+# Docker ビルド出力
+output/
+
+# 署名鍵（実機・サーバ情報と同様に保管しない）
+*.keystore
+*.jks
+
+# ビルド成果物
+*.o
+*.a
+build_*/

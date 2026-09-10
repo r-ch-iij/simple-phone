@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#000000"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="22sp"
+        android:textColor="#4CAF50"
+        android:padding="8dp"
+        android:text="起動中..." />
+
+    <TextView
+        android:id="@+id/numberText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="42sp"
+        android:textColor="#FFFFFF"
+        android:fontFamily="monospace"
+        android:padding="16dp"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/debugText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="#888888"
+        android:padding="8dp"
+        android:text="" />
+
+    <!-- 上側コンテンツを押し上げ、4ボタンを画面下に配置 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- 画面内 4ボタン（田の字、小さく画面下に。右上は設定で固定） -->
+    <LinearLayout
+        android:id="@+id/keypadArea"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingBottom="2dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnKeypadTL"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_margin="1dp"
+                android:text="左上"
+                android:textSize="13sp"
+                android:background="#222222"
+                android:textColor="#FFFFFF" />
+
+            <Button
+                android:id="@+id/btnKeypadTR"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_margin="1dp"
+                android:text="右上"
+                android:textSize="13sp"
+                android:background="#222222"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnKeypadBL"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_margin="1dp"
+                android:text="左下"
+                android:textSize="13sp"
+                android:background="#222222"
+                android:textColor="#FFFFFF" />
+
+            <Button
+                android:id="@+id/btnKeypadBR"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_margin="1dp"
+                android:text="右下"
+                android:textSize="13sp"
+                android:background="#222222"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 画面下部: 設定ボタン（タッチまたは右上キー F2 で開く） -->
+    <TextView
+        android:id="@+id/settingsButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="設定"
+        android:textSize="16sp"
+        android:textColor="#666666"
+        android:padding="8dp"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true" />
+
+</LinearLayout>

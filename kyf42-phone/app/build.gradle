@@ -1,0 +1,76 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'io.github.r_ch_iij.simplephone'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "io.github.r_ch_iij.simplephone"
+        minSdk 28
+        targetSdk 29
+        versionCode 10
+        versionName "3.0"
+
+        externalNativeBuild {
+            cmake {
+                cFlags += "-std=c99"
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
+
+        ndk {
+            abiFilters 'armeabi-v7a'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    buildTypes {
+        debug {
+            // デバッグ中は着信音・バイブなし（NotificationHelper.startRinging で参照）
+            buildConfigField("boolean", "ALERT_SILENT", "true")
+        }
+        release {
+            // リリース版は着信音・バイブあり
+            buildConfigField("boolean", "ALERT_SILENT", "false")
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // targetSdk 29 は KYF42 (Android 10) 対応のため意図的に維持。
+    // 本アプリはサイドロード運用（Google Play 非公開）のため Play 要件の lint を無効化。
+    lint {
+        disable 'ExpiredTargetSdkVersion'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.zxing:core:3.4.1'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    testImplementation 'junit:junit:4.13.2'
+}
