@@ -206,6 +206,46 @@ build_spandsp() {
   echo "  spandsp: $TOTAL compiled, $FAIL failed, $(ls -lh "$OUT/libspandsp.a" | awk '{print $5}')"
 }
 
+# opus 1.4 (fixed-point)
+# 前提: HAVE_CONFIG_H 未定義で全てフォールバックするため config.h 不要。
+# 元の手ビルドと同等: CELT + SILK共通 + SILK_FIXED + OPUS + OPUS_FLOAT(analysis/mlp)。
+# silk/float, x86/arm 最適化, demo/test は対象外。
+build_opus() {
+  local OUT=$NATIVE_DIR/build_opus
+  mkdir -p "$OUT"
+  rm -f "$OUT"/*.o 2>/dev/null || true
+  echo "=== Building opus (fixed-point) ==="
+  local O=$NATIVE_DIR/opus-1.4
+  local INCS="-I$O/celt -I$O/silk -I$O/silk/fixed -I$O/include -I$O/src"
+  local FLAGS="$CFLAGS_BASE $INCS -DOPUS_BUILD -DFIXED_POINT -DUSE_ALLOCA"
+  local FAIL=0 TOTAL=0
+  for src in $O/celt/*.c $O/silk/*.c $O/silk/fixed/*.c \
+      $O/src/opus.c $O/src/opus_decoder.c $O/src/opus_encoder.c \
+      $O/src/opus_multistream.c $O/src/opus_multistream_decoder.c \
+      $O/src/opus_multistream_encoder.c $O/src/opus_projection_decoder.c \
+      $O/src/opus_projection_encoder.c $O/src/repacketizer.c \
+      $O/src/mapping_matrix.c $O/src/analysis.c $O/src/mlp.c $O/src/mlp_data.c; do
+    [ -f "$src" ] || continue
+    TOTAL=$((TOTAL+1))
+    local rel=${src#$O/}
+    local outname="$(dirname "$rel" | tr '/' '_')_$(basename "$src" .c).o"
+    if $CC $FLAGS -c "$src" -o "$OUT/$outname" 2>/dev/null; then
+      :
+    else
+      FAIL=$((FAIL+1))
+    fi
+  done
+  rm -f "$OUT/libopus.a"
+  find "$OUT" -maxdepth 1 -name "*.o" > /tmp/opus_objs.txt
+  # 空アーカイブ回避: .o がなければ失敗扱い
+  if [ ! -s /tmp/opus_objs.txt ]; then
+    echo "  opus: NO OBJECTS (build failed)"
+    return 1
+  fi
+  $AR rcs "$OUT/libopus.a" @/tmp/opus_objs.txt
+  echo "  opus: $TOTAL compiled, $FAIL failed, $(ls -lh "$OUT/libopus.a" | awk '{print $5}')"
+}
+
 # mbedcrypto のみ (HMAC/SHA/MD5 - SIP認証用)
 # libmbedtls.a (TLS) と libmbedx509.a (X.509) は不要
 build_mbedcrypto() {
@@ -244,10 +284,11 @@ build_mbedcrypto
 # spandsp (G.722) は他に依存しないため先にビルド
 build_spandsp
 
-# re, rem, baresip をサブシェルで並列ビルド
+# re, rem, baresip, opus をサブシェルで並列ビルド
 build_re &
 build_rem &
 build_baresip &
+build_opus &
 wait
 
 # --- 結果サマリ ---
@@ -258,6 +299,7 @@ ls -lh "$NATIVE_DIR/build_re/libre.a"
 ls -lh "$NATIVE_DIR/build_rem/librem.a"
 ls -lh "$NATIVE_DIR/build_mbedtls/library/libmbedcrypto.a"
 ls -lh "$NATIVE_DIR/build_baresip_final/libbaresip.a"
+ls -lh "$NATIVE_DIR/build_opus/libopus.a"
 echo ""
 echo "=== Removed (not needed) ==="
 echo "  libmbedtls.a  (TLS transport - disabled in ua_init)"
