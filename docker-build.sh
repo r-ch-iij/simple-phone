@@ -33,7 +33,7 @@ sudo chown -R "$USER_ID:$GROUP_ID" "$SCRIPT_DIR/kyf42-phone/native/build_"* 2>/d
 echo ""
 echo "=== 完成 ($BUILD_TYPE) ==="
 if [ "$BUILD_TYPE" = "release" ]; then
-    ls -lh "$OUTPUT_DIR/kyf42-phone-release.apk"
+    ls -lh "$OUTPUT_DIR/kyf39-phone-release.apk" "$OUTPUT_DIR/kyf42-phone-release.apk"
 else
-    ls -lh "$OUTPUT_DIR/kyf42-phone.apk"
+    ls -lh "$OUTPUT_DIR/kyf39-phone.apk" "$OUTPUT_DIR/kyf42-phone.apk"
 fi

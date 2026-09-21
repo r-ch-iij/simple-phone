@@ -15,7 +15,7 @@ Docker でのビルドを推奨（NDK・SDK・Gradle をイメージ内で用意
 ./docker-build.sh release
 ```
 
-成果物は `output/` に出る（`kyf42-phone.apk` / `kyf42-phone-release.apk`）。
+成果物は `output/` に出る（`kyf39-phone.apk` / `kyf42-phone.apk`、release は `-release` 付き）。
 署名鍵は `output/<type>.keystore` を使い回す（なければ自動生成）。
 `output/` と `*.keystore` / `*.jks` は git 管理外。
 
@@ -86,6 +86,7 @@ PBX に Opus トランスコーダがない構成では、opus⇔ulaw 混在は�
 
 ※終話ボタンはシステムが消費するためアプリで使用不可。通話終了はクリアボタンまたは赤電話ボタン。
 ※決定キー（DPAD_CENTER）は通話中の誤切断防止のため明示的に無視。
+※ソフトキーイベントは機種差があり、KYF39（API 22）は SK1=131 / SK2=132、KYF42 は SK1=132 / SK2=133。
 
 ### ソフトキー実装ガイド
 

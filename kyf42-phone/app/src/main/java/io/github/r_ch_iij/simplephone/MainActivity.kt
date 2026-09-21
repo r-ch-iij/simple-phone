@@ -25,6 +25,13 @@ class MainActivity : Activity(), SipService.Listener {
     companion object {
         private const val TAG = "SimplePhone"
         private const val REQUEST_RECORD_AUDIO = 100
+
+        // ソフトキーガイドの位置に対応する Android キーコード。
+        // matrix_keypad.kl: key 59-62 (F1-F4) → KEYCODE_F1..F4 (131-134)。
+        // ガイド位置は 1=左上, 2=右上, 3=左下, 4=右下（実機の表示ラベルと
+        // getevent / logcat の受信コードで確認済み）。KYF39/KYF42 で共通。
+        internal fun guideKeyCode(position: Int): Int =
+            KeyEvent.KEYCODE_F1 + position - 1
     }
 
     private lateinit var statusText: TextView
@@ -80,7 +87,7 @@ class MainActivity : Activity(), SipService.Listener {
             sipService?.addListener(this@MainActivity)
             // 通話状態を先に同期してから表示を更新（上書き防止）
             syncCallState()
-            if (!callState.isInCall) {
+            if (callState is CallState.Idle) {
                 updateDisplay("サービス接続済み")
             }
             Log.d(TAG, "service connected")
@@ -124,6 +131,7 @@ class MainActivity : Activity(), SipService.Listener {
         }
 
         setupKeypadButtons()
+        handleIncomingCallIntent(intent)
 
         // サービスを起動してバインド（未設定時はスキップ）
         if (SipConfig.isConfigured(this)) {
@@ -140,6 +148,22 @@ class MainActivity : Activity(), SipService.Listener {
         val testFilter = android.content.IntentFilter("io.github.r_ch_iij.simplephone.TEST_CALL")
         testFilter.addAction("io.github.r_ch_iij.simplephone.TEST_HANGUP")
         registerReceiver(testReceiver, testFilter)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingCallIntent(intent)
+    }
+
+    private fun handleIncomingCallIntent(intent: Intent?) {
+        if (intent?.action != SipService.INCOMING_CALL_ACTION) return
+        val callerNumber = intent.getStringExtra(SipService.EXTRA_CALLER)
+        if (callerNumber.isNullOrEmpty()) {
+            Log.w(TAG, "incoming call intent has no caller")
+            return
+        }
+        onIncomingCall(callerNumber)
     }
 
     override fun onStart() {
@@ -299,20 +323,23 @@ class MainActivity : Activity(), SipService.Listener {
         Log.d(TAG, "onKeyDown: keyCode=$keyCode")
 
         // 状態別ソフトキー（設定の割り当てより優先）。
-        // ガイド位置とキーコードの対応: 左上=F1(131), 右上=F2(132),
-        // 左下=F3(133), 右下=F4(134)（getevent で実測済み）
+        // 位置はガイド表示と対応: SK1=左上, SK2=右上。
+        // 通話中のミュートは右上（ガイド位置2）に置く。以前は KYF42 で
+        // softKey2=F3(133)=左下 に置いていたため、左下=音量▼ と衝突していた。
+        val softKey1 = guideKeyCode(1) // 左上
+        val softKey2 = guideKeyCode(2) // 右上
         when (callState) {
             is CallState.Incoming -> when (keyCode) {
-                132 -> { endCall(); return true } // 拒否
-                133 -> { answerCall(); return true } // 応答
+                softKey1 -> { endCall(); return true } // 拒否
+                softKey2 -> { answerCall(); return true } // 応答
                 else -> {}
             }
             is CallState.Active -> when (keyCode) {
-                133 -> { toggleMute(); return true } // ミュート切替
+                softKey2 -> { toggleMute(); return true } // ミュート切替
                 else -> {}
             }
             is CallState.Outgoing -> when (keyCode) {
-                132 -> { endCall(); return true } // 発信取消
+                softKey1 -> { endCall(); return true } // 発信取消
                 else -> {}
             }
             else -> {}
@@ -509,7 +536,7 @@ class MainActivity : Activity(), SipService.Listener {
 
     // Kyocera ソフトキーバーに 4 ボタンを表示する。
     // KCfpSoftkeyGuide はシステムブートクラスパス上のためリフレクションでアクセス。
-    // キーコード: 132=SK1, 133=SK2, 134=SK3, SK4 も利用可能
+    // ガイド位置: 1=左上(F1/131), 2=右上(F2/132), 3=左下(F3/133), 4=右下(F4/134)
     // 戻り値: ソフトキーガイドが利用可能かどうか
     private fun setupSoftKeys(): Boolean {
         try {
@@ -622,11 +649,11 @@ class MainActivity : Activity(), SipService.Listener {
     }
 
     // 通話状態に応じてソフトキーラベルを切り替える。
-    // ガイド番号とキーコードの対応: 1=SK1(132), 2=SK2(133), 3=SK3(134), 4=SK4
-    // 状態別の上書き（onKeyDown の先頭で同じ対応付けで処理）:
-    // - 着信中: SK1=拒否, SK2=応答
-    // - 通話中: SK2=ミュート切替
-    // - 発信中: SK1=発信取消
+    // ガイド位置とキーコードの対応: 1=左上(F1/131), 2=右上(F2/132),
+    // 3=左下(F3/133), 4=右下(F4/134)。onKeyDown の状態別処理も同じ位置を使う。
+    // - 着信中: 位置1=拒否, 位置2=応答
+    // - 通話中: 位置2=ミュート切替（位置3=音量▼ は設定どおり動作させる）
+    // - 発信中: 位置1=発信取消
     private fun updateSoftKeysForState() {
         if (!hasSoftKeyGuide) return
         try {

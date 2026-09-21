@@ -7,7 +7,10 @@ set -e
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 NDK=${ANDROID_NDK_HOME:-${ANDROID_HOME}/ndk/27.0.12077973}
 [ -d "$NDK" ] || NDK=/usr/lib/android-sdk/ndk/27.0.12077973
-CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi28-clang
+# KYF39 (API 22) / KYF42 (API 28) 切替: ANDROID_API_LEVEL で上書き可能。
+# 本ブランチ (kyf39-android51) のデフォルトは 22。
+ANDROID_API_LEVEL=${ANDROID_API_LEVEL:-22}
+CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi${ANDROID_API_LEVEL}-clang
 AR=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
 
 NATIVE_DIR=$SCRIPT_DIR
@@ -273,9 +276,9 @@ build_mbedcrypto() {
 # ============================================================
 # メイン: 16スレッドで並列ビルド
 # ============================================================
-echo "=== KYF42 SimplePhone Native Build ==="
+echo "=== KYF39 SimplePhone Native Build ==="
 echo "  NDK: $NDK"
-echo "  Target: armeabi-v7a (API 28)"
+echo "  Target: armeabi-v7a (API $ANDROID_API_LEVEL)"
 echo ""
 
 # mbedcrypto は他のライブラリの依存先なので先にビルド

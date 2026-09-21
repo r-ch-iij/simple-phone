@@ -136,7 +136,8 @@ app/
 ```bash
 cd kyf42-phone
 ./gradlew assembleDebug
-adb install app/build/outputs/apk/debug/app-debug.apk
+adb install app/build/outputs/apk/kyf42/debug/app-kyf42-debug.apk
+# KYF39 用は app/build/outputs/apk/kyf39/debug/app-kyf39-debug.apk
 ```
 
 ## 動作確認結果（2026-08-19）

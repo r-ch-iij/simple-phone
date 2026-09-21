@@ -7,7 +7,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkRequest
 import android.os.Binder
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -26,12 +28,18 @@ class SipService : Service(), SipManager.SipCallback {
         private const val RING_TIMEOUT_MS = 45_000L
         const val ACTION_START = "io.github.r_ch_iij.simplephone.ACTION_START"
         const val INCOMING_CALL_ACTION = "io.github.r_ch_iij.simplephone.INCOMING_CALL"
+        const val EXTRA_CALLER = "io.github.r_ch_iij.simplephone.EXTRA_CALLER"
 
         fun start(context: Context) {
             if (!SipConfig.isConfigured(context)) return
             val intent = Intent(context, SipService::class.java).setAction(ACTION_START)
-            // Android 10+: バックグラウンドからのサービス起動には startForegroundService が必要
-            context.startForegroundService(intent)
+            // API 26+: バックグラウンドからのサービス起動には startForegroundService が必要。
+            // API 22 (KYF39) では startForegroundService が存在しないため startService を使う。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         }
     }
 
@@ -109,6 +117,32 @@ class SipService : Service(), SipManager.SipCallback {
         }
     }
     private var connectivityManager: ConnectivityManager? = null
+    // API 24 未満 (KYF39 / API 22) 用のフォールバック: CONNECTIVITY_ACTION で復帰検知。
+    // registerDefaultNetworkCallback は API 24+ のため API 22 では使えない。
+    private var useLegacyNetworkReceiver = false
+    private val legacyNetworkReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ConnectivityManager.CONNECTIVITY_ACTION) {
+                @Suppress("DEPRECATION")
+                val info = connectivityManager?.activeNetworkInfo
+                @Suppress("DEPRECATION")
+                if (info != null && info.isConnected) {
+                    Log.d(TAG, "legacy network connected -> reregister")
+                    sipExecutor.execute {
+                        try {
+                            if (SipConfig.isConfigured(this@SipService) &&
+                                sipManager?.isRegistered() == true
+                            ) {
+                                sipManager?.reregister()
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "reregister on legacy network failed", e)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     inner class LocalBinder : Binder() {
         fun getService(): SipService = this@SipService
@@ -131,7 +165,24 @@ class SipService : Service(), SipManager.SipCallback {
         connectivityManager =
             getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         try {
-            connectivityManager?.registerDefaultNetworkCallback(networkCallback)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                connectivityManager?.registerDefaultNetworkCallback(networkCallback)
+            } else {
+                // API 22: NetworkRequest 版 (API 21+ で利用可能) でフォールバック
+                try {
+                    val request = NetworkRequest.Builder().build()
+                    connectivityManager?.registerNetworkCallback(request, networkCallback)
+                } catch (e: Exception) {
+                    // さらに古い端末向け: CONNECTIVITY_ACTION ブロードキャスト
+                    Log.w(TAG, "registerNetworkCallback failed, using legacy receiver", e)
+                    @Suppress("DEPRECATION")
+                    registerReceiver(
+                        legacyNetworkReceiver,
+                        IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION)
+                    )
+                    useLegacyNetworkReceiver = true
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "register network callback failed", e)
         }
@@ -168,7 +219,11 @@ class SipService : Service(), SipManager.SipCallback {
 
     override fun onDestroy() {
         try {
-            connectivityManager?.unregisterNetworkCallback(networkCallback)
+            if (useLegacyNetworkReceiver) {
+                unregisterReceiver(legacyNetworkReceiver)
+            } else {
+                connectivityManager?.unregisterNetworkCallback(networkCallback)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "unregister networkCallback failed", e)
         }
@@ -235,6 +290,7 @@ class SipService : Service(), SipManager.SipCallback {
         // Activity を前面に持ってくる
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             action = INCOMING_CALL_ACTION
+            putExtra(EXTRA_CALLER, callerNumber)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         startActivity(launchIntent)
