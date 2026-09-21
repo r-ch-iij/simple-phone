@@ -1,6 +1,7 @@
 # simple-phone
 
-au GRATINA KYF42（Android 10 / API 29）向けの SIP 電話アプリと関連ドキュメントのリポジトリ。
+au GRATINA KYF42（Android 10 / API 29）と KYF39（Android 5.1.1 / API 22）向けの
+SIP 電話アプリと関連ドキュメントのリポジトリ。
 物理キーのみで操作できる最小限の SIP クライアントを提供する。
 
 ## 構成
@@ -20,6 +21,14 @@ cd kyf42-phone
 # または Docker で
 ./docker-build.sh [debug|release]
 ```
+
+機種別フレーバーで両対応。1回のビルドで両 APK が `output/` に出る。
+KYF39 側のソフトキー等は `Build.DEVICE` で切り替えている。
+
+| APK | 対象機種 | minSdk / targetSdk |
+|-----|---------|-------------------|
+| `output/kyf39-phone.apk` | KYF39（Android 5.1.1） | 22 / 22 |
+| `output/kyf42-phone.apk` | KYF42（Android 10） | 28 / 29 |
 
 詳細は `docs/kyf42-phone-dev.md` を参照。
 
