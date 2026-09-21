@@ -7,15 +7,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
 import android.view.KeyEvent
+import android.view.Window
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.google.zxing.integration.android.IntentIntegrator
 
 // SIP アカウントと F キー割り当ての設定画面
@@ -82,32 +88,28 @@ class SettingsActivity : Activity() {
         volumeLabel.text = "$volPct%"
         volumeBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val p = if (progress < 50) 50 else progress
+                val p = progress.coerceAtLeast(50)
                 volumeLabel.text = "$p%"
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 val raw = seekBar?.progress ?: 150
-                val p = if (raw < 50) 50 else raw
+                val p = raw.coerceAtLeast(50)
                 volumeLabel.text = "$p%"
             }
         })
 
         // キー設定（4つのキーを統一管理）
-        val key1Button = findViewById<Button>(R.id.setKey1)
-        val key2Button = findViewById<Button>(R.id.setKey2)
-        val key3Button = findViewById<Button>(R.id.setKey3)
-        val key4Button = findViewById<Button>(R.id.setKey4)
-
-        refreshKeyButton(key1Button, SipConfig.KEY_ACTION_1, "左上")
-        refreshKeyButton(key2Button, SipConfig.KEY_ACTION_2, "右上")
-        refreshKeyButton(key3Button, SipConfig.KEY_ACTION_3, "左下")
-        refreshKeyButton(key4Button, SipConfig.KEY_ACTION_4, "右下")
-
-        key1Button.setOnClickListener { cycleKey(SipConfig.KEY_ACTION_1, key1Button, "左上") }
-        key2Button.setOnClickListener { cycleKey(SipConfig.KEY_ACTION_2, key2Button, "右上") }
-        key3Button.setOnClickListener { cycleKey(SipConfig.KEY_ACTION_3, key3Button, "左下") }
-        key4Button.setOnClickListener { cycleKey(SipConfig.KEY_ACTION_4, key4Button, "右下") }
+        listOf(
+            Triple(R.id.setKey1, SipConfig.KEY_ACTION_1, "左上"),
+            Triple(R.id.setKey2, SipConfig.KEY_ACTION_2, "右上"),
+            Triple(R.id.setKey3, SipConfig.KEY_ACTION_3, "左下"),
+            Triple(R.id.setKey4, SipConfig.KEY_ACTION_4, "右下")
+        ).forEach { (id, key, pos) ->
+            val button = findViewById<Button>(id)
+            refreshKeyButton(button, key, pos)
+            button.setOnClickListener { cycleKey(key, button, pos) }
+        }
 
         // QR コードからの設定取り込み
         findViewById<Button>(R.id.setQrImport).setOnClickListener { startQrScan() }
@@ -126,15 +128,15 @@ class SettingsActivity : Activity() {
     // 着信音選択ダイアログを開く
     private fun openRingtonePicker() {
         val current = SipConfig.getRingtoneUri(this)
-        val intent = Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE,
-                android.media.RingtoneManager.TYPE_RINGTONE)
-            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "着信音の選択")
-            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
-            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE,
+                RingtoneManager.TYPE_RINGTONE)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "着信音の選択")
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
             if (!current.isNullOrEmpty()) {
-                putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
-                    android.net.Uri.parse(current))
+                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                    Uri.parse(current))
             }
         }
         startActivityForResult(intent, REQUEST_RINGTONE)
@@ -149,8 +151,8 @@ class SettingsActivity : Activity() {
             current.isEmpty() -> "着信音：無音"
             else -> {
                 val title = try {
-                    android.media.RingtoneManager.getRingtone(
-                        this, android.net.Uri.parse(current))?.getTitle(this)
+                    RingtoneManager.getRingtone(
+                        this, Uri.parse(current))?.getTitle(this)
                 } catch (e: Exception) { null }
                 "着信音：${title ?: current}"
             }
@@ -202,6 +204,18 @@ class SettingsActivity : Activity() {
         button.text = "$pos：${SipConfig.fKeyLabel(SipConfig.getAction(this, configKey))}"
     }
 
+    // 4キー表示を一括更新する（初期表示・初期設定リセットで共用）
+    private fun refreshAllKeys() {
+        listOf(
+            Triple(R.id.setKey1, SipConfig.KEY_ACTION_1, "左上"),
+            Triple(R.id.setKey2, SipConfig.KEY_ACTION_2, "右上"),
+            Triple(R.id.setKey3, SipConfig.KEY_ACTION_3, "左下"),
+            Triple(R.id.setKey4, SipConfig.KEY_ACTION_4, "右下")
+        ).forEach { (id, key, pos) ->
+            refreshKeyButton(findViewById(id), key, pos)
+        }
+    }
+
     private fun cycleKey(configKey: String, button: Button, pos: String) {
         val current = SipConfig.getAction(this, configKey)
         val idx = fKeyOptions.indexOf(current)
@@ -221,11 +235,11 @@ class SettingsActivity : Activity() {
 
     private fun startQrScan() {
         // QR スキャンにはカメラ権限が必要（初回はここで要求）
-        if (androidx.core.content.ContextCompat.checkSelfPermission(
+        if (ContextCompat.checkSelfPermission(
                 this, android.Manifest.permission.CAMERA
-            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
-            androidx.core.app.ActivityCompat.requestPermissions(
+            ActivityCompat.requestPermissions(
                 this, arrayOf(android.Manifest.permission.CAMERA), REQUEST_CAMERA
             )
             return
@@ -246,8 +260,8 @@ class SettingsActivity : Activity() {
         // 着信音選択の結果
         if (requestCode == REQUEST_RINGTONE) {
             if (resultCode == Activity.RESULT_OK) {
-                val uri: android.net.Uri? =
-                    data?.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+                val uri: Uri? =
+                    data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
                 // null（サイレント選択）→ 空文字で保存し無音化。未設定（null取得）→ デフォルト音
                 SipConfig.set(this, SipConfig.KEY_RINGTONE, uri?.toString() ?: "")
                 refreshRingtoneButton()
@@ -271,7 +285,7 @@ class SettingsActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) {
             if (grantResults.isNotEmpty() &&
-                grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
             ) {
                 launchQrScanner()
             } else {
@@ -314,15 +328,8 @@ class SettingsActivity : Activity() {
             // SK1 (132) = 初期設定に戻す（キー割り当てのみ。SIPアカウントは変更しない）
             132 -> {
                 SipConfig.resetToDefaults(this)
-                val key1Button = findViewById<Button>(R.id.setKey1)
-                val key2Button = findViewById<Button>(R.id.setKey2)
-                val key3Button = findViewById<Button>(R.id.setKey3)
-                val key4Button = findViewById<Button>(R.id.setKey4)
-                refreshKeyButton(key1Button, SipConfig.KEY_ACTION_1, "左上")
-                refreshKeyButton(key2Button, SipConfig.KEY_ACTION_2, "右上")
-                refreshKeyButton(key3Button, SipConfig.KEY_ACTION_3, "左下")
-                refreshKeyButton(key4Button, SipConfig.KEY_ACTION_4, "右下")
-                android.widget.Toast.makeText(this, "初期設定に戻しました", android.widget.Toast.LENGTH_SHORT).show()
+                refreshAllKeys()
+                Toast.makeText(this, "初期設定に戻しました", Toast.LENGTH_SHORT).show()
                 true
             }
             // SK2 (133) = 設定保存
@@ -360,7 +367,7 @@ class SettingsActivity : Activity() {
     private fun setupSoftKeys() {
         try {
             val guideClass = Class.forName("jp.kyocera.kcfp.util.KCfpSoftkeyGuide")
-            val getMethod = guideClass.getMethod("getSoftkeyGuide", android.view.Window::class.java)
+            val getMethod = guideClass.getMethod("getSoftkeyGuide", Window::class.java)
             val guide = getMethod.invoke(null, window) ?: return
             val setText = guideClass.getMethod("setText", Int::class.java, CharSequence::class.java)
             val setEnabled = guideClass.getMethod("setEnabled", Int::class.java, Boolean::class.java)

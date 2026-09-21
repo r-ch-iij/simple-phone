@@ -8,7 +8,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 NDK=${ANDROID_NDK_HOME:-${ANDROID_HOME}/ndk/27.0.12077973}
 [ -d "$NDK" ] || NDK=/usr/lib/android-sdk/ndk/27.0.12077973
 # KYF39 (API 22) / KYF42 (API 28) 切替: ANDROID_API_LEVEL で上書き可能。
-# 本ブランチ (kyf39-android51) のデフォルトは 22。
+# デフォルトは 22（docker-build.sh から渡す場合はそちらが優先）。
 ANDROID_API_LEVEL=${ANDROID_API_LEVEL:-22}
 CC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi${ANDROID_API_LEVEL}-clang
 AR=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
@@ -36,52 +36,37 @@ CFLAGS_BASE="-DUSE_MBEDTLS -DMBEDTLS_MD_C -DARRAY_SIZE=RE_ARRAY_SIZE \
 # ビルド関数
 # ============================================================
 
-# re (libre) - 全ファイルをコンパイル
-build_re() {
-  local OUT=$NATIVE_DIR/build_re
+# re / rem 共通: srcdir 下の .c をまとめて lib<name>.a にする。
+# re と rem は列挙・命名・集計が同一形のため 1 関数にまとめる。
+build_lib() { # name srcdir extra_incs
+  local name=$1 srcdir=$2 extra=$3
+  local OUT=$NATIVE_DIR/build_$name
   rm -rf "$OUT" && mkdir -p "$OUT"
-  echo "=== Building re (libre) ==="
+  echo "=== Building $name ==="
   local FAIL=0 TOTAL=0
-  local ARNAME="$OUT/libre.a"
-  for src in $(find "$NATIVE_DIR/re/src" -name "*.c" ! -name "openssl.c" | sort); do
+  local ARNAME="$OUT/lib$name.a"
+  for src in $(find "$NATIVE_DIR/$srcdir" -name "*.c" ! -name "openssl.c" | sort); do
     TOTAL=$((TOTAL+1))
-    local rel=${src#$NATIVE_DIR/re/src/}
-    local odir="$OUT/$(dirname "$rel")"
-    mkdir -p "$odir"
-    local bn=$(basename "$src")
-    local prefix=$(dirname "$rel" | tr '/' '_')
-    local outname="${prefix}_${bn%.c}.o"
-    if $CC $CFLAGS_BASE -I$RE_INC -I$REM_INC -I$MBED_INC -c "$src" -o "$OUT/$outname" 2>/dev/null; then
+    local rel=${src#$NATIVE_DIR/$srcdir/}
+    local outname="$(dirname "$rel" | tr '/' '_')_$(basename "$src" .c).o"
+    # shellcheck disable=SC2086
+    if $CC $CFLAGS_BASE $extra -c "$src" -o "$OUT/$outname" 2>/dev/null; then
       $AR rcs "$ARNAME" "$OUT/$outname" 2>/dev/null
     else
       FAIL=$((FAIL+1))
     fi
   done
-  echo "  re: $TOTAL compiled, $FAIL failed, $(ls -lh "$ARNAME" | awk '{print $5}')"
+  echo "  $name: $TOTAL compiled, $FAIL failed, $(ls -lh "$ARNAME" | awk '{print $5}')"
+}
+
+# re (libre) - 全ファイルをコンパイル
+build_re() {
+  build_lib re re/src "-I$RE_INC -I$REM_INC -I$MBED_INC"
 }
 
 # rem (librem) - 全ファイルをコンパイル
 build_rem() {
-  local OUT=$NATIVE_DIR/build_rem
-  rm -rf "$OUT" && mkdir -p "$OUT"
-  echo "=== Building rem (librem) ==="
-  local FAIL=0 TOTAL=0
-  local ARNAME="$OUT/librem.a"
-  for src in $(find "$NATIVE_DIR/re/rem" -name "*.c" ! -name "openssl.c" | sort); do
-    TOTAL=$((TOTAL+1))
-    local rel=${src#$NATIVE_DIR/re/rem/}
-    local odir="$OUT/$(dirname "$rel")"
-    mkdir -p "$odir"
-    local bn=$(basename "$src")
-    local prefix=$(dirname "$rel" | tr '/' '_')
-    local outname="${prefix}_${bn%.c}.o"
-    if $CC $CFLAGS_BASE -I$RE_INC -I$MBED_INC -c "$src" -o "$OUT/$outname" 2>/dev/null; then
-      $AR rcs "$ARNAME" "$OUT/$outname" 2>/dev/null
-    else
-      FAIL=$((FAIL+1))
-    fi
-  done
-  echo "  rem: $TOTAL compiled, $FAIL failed, $(ls -lh "$ARNAME" | awk '{print $5}')"
+  build_lib rem re/rem "-I$RE_INC -I$MBED_INC"
 }
 
 # baresip - 全 src/ + opensles モジュール + g711 モジュール

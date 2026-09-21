@@ -2,8 +2,8 @@
 # build-apk.sh - Docker 内で APK をビルドするスクリプト
 # 使い方: build-apk.sh [debug|release]  (デフォルト: debug)
 #
-# - debug:   着信音・バイブなし（BuildConfig.ALERT_SILENT=true）
-# - release: 着信音・バイブあり（BuildConfig.ALERT_SILENT=false）。
+# - debug:   着信音・バイブなし（BuildConfig.DEBUG=true）
+# - release: 着信音・バイブあり（BuildConfig.DEBUG=false）。
 # 署名鍵は /output/<type>.keystore を使い回す（なければ自動生成）。
 # コンテナ内の一時鍵を使わないことで、ビルド毎に署名が変わらない。
 set -e
@@ -38,7 +38,6 @@ echo "=== APK ビルド ($BUILD_TYPE) ==="
 # .cxx キャッシュを消してクリーンビルド
 rm -rf app/.cxx
 
-EXTRA_PROPS=""
 # フレーバー別 APK（assembleDebug/assembleRelease は全フレーバーをビルドする）
 if [ "$BUILD_TYPE" = "release" ]; then
     declare -A APKS=(
