@@ -25,6 +25,20 @@ class MainActivity : Activity(), SipService.Listener {
     companion object {
         private const val TAG = "SimplePhone"
         private const val REQUEST_RECORD_AUDIO = 100
+
+        internal fun softKey1Code(sdkInt: Int): Int =
+            if (sdkInt <= android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
+                KeyEvent.KEYCODE_F1
+            } else {
+                KeyEvent.KEYCODE_F2
+            }
+
+        internal fun softKey2Code(sdkInt: Int): Int =
+            if (sdkInt <= android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
+                KeyEvent.KEYCODE_F2
+            } else {
+                KeyEvent.KEYCODE_F3
+            }
     }
 
     private lateinit var statusText: TextView
@@ -80,7 +94,7 @@ class MainActivity : Activity(), SipService.Listener {
             sipService?.addListener(this@MainActivity)
             // 通話状態を先に同期してから表示を更新（上書き防止）
             syncCallState()
-            if (!callState.isInCall) {
+            if (callState is CallState.Idle) {
                 updateDisplay("サービス接続済み")
             }
             Log.d(TAG, "service connected")
@@ -124,6 +138,7 @@ class MainActivity : Activity(), SipService.Listener {
         }
 
         setupKeypadButtons()
+        handleIncomingCallIntent(intent)
 
         // サービスを起動してバインド（未設定時はスキップ）
         if (SipConfig.isConfigured(this)) {
@@ -140,6 +155,22 @@ class MainActivity : Activity(), SipService.Listener {
         val testFilter = android.content.IntentFilter("io.github.r_ch_iij.simplephone.TEST_CALL")
         testFilter.addAction("io.github.r_ch_iij.simplephone.TEST_HANGUP")
         registerReceiver(testReceiver, testFilter)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingCallIntent(intent)
+    }
+
+    private fun handleIncomingCallIntent(intent: Intent?) {
+        if (intent?.action != SipService.INCOMING_CALL_ACTION) return
+        val callerNumber = intent.getStringExtra(SipService.EXTRA_CALLER)
+        if (callerNumber.isNullOrEmpty()) {
+            Log.w(TAG, "incoming call intent has no caller")
+            return
+        }
+        onIncomingCall(callerNumber)
     }
 
     override fun onStart() {
@@ -299,20 +330,22 @@ class MainActivity : Activity(), SipService.Listener {
         Log.d(TAG, "onKeyDown: keyCode=$keyCode")
 
         // 状態別ソフトキー（設定の割り当てより優先）。
-        // ガイド位置とキーコードの対応: 左上=F1(131), 右上=F2(132),
-        // 左下=F3(133), 右下=F4(134)（getevent で実測済み）
+        // KYF39 (API 22) は SK1=F1(131), SK2=F2(132)。
+        // KYF42 は SK1=F2(132), SK2=F3(133)。
+        val softKey1 = softKey1Code(android.os.Build.VERSION.SDK_INT)
+        val softKey2 = softKey2Code(android.os.Build.VERSION.SDK_INT)
         when (callState) {
             is CallState.Incoming -> when (keyCode) {
-                132 -> { endCall(); return true } // 拒否
-                133 -> { answerCall(); return true } // 応答
+                softKey1 -> { endCall(); return true } // 拒否
+                softKey2 -> { answerCall(); return true } // 応答
                 else -> {}
             }
             is CallState.Active -> when (keyCode) {
-                133 -> { toggleMute(); return true } // ミュート切替
+                softKey2 -> { toggleMute(); return true } // ミュート切替
                 else -> {}
             }
             is CallState.Outgoing -> when (keyCode) {
-                132 -> { endCall(); return true } // 発信取消
+                softKey1 -> { endCall(); return true } // 発信取消
                 else -> {}
             }
             else -> {}

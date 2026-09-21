@@ -28,6 +28,7 @@ class SipService : Service(), SipManager.SipCallback {
         private const val RING_TIMEOUT_MS = 45_000L
         const val ACTION_START = "io.github.r_ch_iij.simplephone.ACTION_START"
         const val INCOMING_CALL_ACTION = "io.github.r_ch_iij.simplephone.INCOMING_CALL"
+        const val EXTRA_CALLER = "io.github.r_ch_iij.simplephone.EXTRA_CALLER"
 
         fun start(context: Context) {
             if (!SipConfig.isConfigured(context)) return
@@ -289,6 +290,7 @@ class SipService : Service(), SipManager.SipCallback {
         // Activity を前面に持ってくる
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             action = INCOMING_CALL_ACTION
+            putExtra(EXTRA_CALLER, callerNumber)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         startActivity(launchIntent)
