@@ -9,12 +9,8 @@ android {
 
     defaultConfig {
         applicationId "io.github.r_ch_iij.simplephone"
-        // KYF39 (Android 5.1.1 / API 22) 対応: min/target を 22 に下げる。
-        // targetSdk 22 でランタイムパーミッション無効（インストール時許可）になる。
-        minSdk 22
-        targetSdk 22
         versionCode 11
-        versionName "3.0-kyf39"
+        versionName "3.0"
 
         externalNativeBuild {
             cmake {
@@ -25,6 +21,25 @@ android {
 
         ndk {
             abiFilters 'armeabi-v7a'
+        }
+    }
+
+    // 機種別フレーバー: 同一ソースから KYF39 / KYF42 用 APK を出し分ける。
+    // 実行時の機種差（ソフトキーコード等）は Build.DEVICE 参照で吸収する。
+    flavorDimensions "device"
+    productFlavors {
+        kyf39 {
+            dimension "device"
+            // KYF39 (Android 5.1.1 / API 22)。targetSdk 22 で
+            // ランタイムパーミッション無効（インストール時許可）になる。
+            minSdk 22
+            targetSdk 22
+            versionNameSuffix "-kyf39"
+        }
+        kyf42 {
+            dimension "device"
+            minSdk 28
+            targetSdk 29
         }
     }
 
@@ -53,7 +68,7 @@ android {
         }
     }
 
-    // targetSdk 22 は KYF39 (Android 5.1.1) 対応のため意図的に維持。
+    // targetSdk はフレーバー別（kyf39=22 / kyf42=29）。
     // 本アプリはサイドロード運用（Google Play 非公開）のため Play 要件の lint を無効化。
     lint {
         disable 'ExpiredTargetSdkVersion'

@@ -26,15 +26,20 @@ class MainActivity : Activity(), SipService.Listener {
         private const val TAG = "SimplePhone"
         private const val REQUEST_RECORD_AUDIO = 100
 
-        internal fun softKey1Code(sdkInt: Int): Int =
-            if (sdkInt <= android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
+        // 機種別ソフトキーコード（Build.DEVICE 参照。ro.product.device）。
+        // KYF39: SK1=F1(131), SK2=F2(132)／その他(KYF42等): SK1=F2(132), SK2=F3(133)。
+        // 注意: KYF39 の getevent 実測は Linux コード SK2=61(KEY_F3) のため、
+        // 標準マッピングでは Android 133 になる可能性が残る。logcat の onKeyDown
+        // （受信 Android コード）で確定したら SK2 側を修正すること。
+        internal fun softKey1Code(device: String): Int =
+            if (device == "KYF39") {
                 KeyEvent.KEYCODE_F1
             } else {
                 KeyEvent.KEYCODE_F2
             }
 
-        internal fun softKey2Code(sdkInt: Int): Int =
-            if (sdkInt <= android.os.Build.VERSION_CODES.LOLLIPOP_MR1) {
+        internal fun softKey2Code(device: String): Int =
+            if (device == "KYF39") {
                 KeyEvent.KEYCODE_F2
             } else {
                 KeyEvent.KEYCODE_F3
@@ -330,10 +335,10 @@ class MainActivity : Activity(), SipService.Listener {
         Log.d(TAG, "onKeyDown: keyCode=$keyCode")
 
         // 状態別ソフトキー（設定の割り当てより優先）。
-        // KYF39 (API 22) は SK1=F1(131), SK2=F2(132)。
-        // KYF42 は SK1=F2(132), SK2=F3(133)。
-        val softKey1 = softKey1Code(android.os.Build.VERSION.SDK_INT)
-        val softKey2 = softKey2Code(android.os.Build.VERSION.SDK_INT)
+        // Build.DEVICE 参照: KYF39 は SK1=F1(131), SK2=F2(132)。
+        // その他(KYF42等) は SK1=F2(132), SK2=F3(133)。
+        val softKey1 = softKey1Code(android.os.Build.DEVICE)
+        val softKey2 = softKey2Code(android.os.Build.DEVICE)
         when (callState) {
             is CallState.Incoming -> when (keyCode) {
                 softKey1 -> { endCall(); return true } // 拒否

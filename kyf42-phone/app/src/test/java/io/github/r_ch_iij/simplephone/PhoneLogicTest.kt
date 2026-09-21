@@ -366,14 +366,20 @@ class PhoneLogicTest {
 
     @Test
     fun `KYF39のSK2は応答キー132`() {
-        assertEquals(131, MainActivity.softKey1Code(22))
-        assertEquals(132, MainActivity.softKey2Code(22))
+        assertEquals(131, MainActivity.softKey1Code("KYF39"))
+        assertEquals(132, MainActivity.softKey2Code("KYF39"))
     }
 
     @Test
     fun `KYF42のSK2は応答キー133`() {
-        assertEquals(132, MainActivity.softKey1Code(29))
-        assertEquals(133, MainActivity.softKey2Code(29))
+        assertEquals(132, MainActivity.softKey1Code("KYF42"))
+        assertEquals(133, MainActivity.softKey2Code("KYF42"))
+    }
+
+    @Test
+    fun `未知の機種はKYF42マッピングにフォールバック`() {
+        assertEquals(132, MainActivity.softKey1Code("UNKNOWN"))
+        assertEquals(133, MainActivity.softKey2Code("UNKNOWN"))
     }
 
     @Test

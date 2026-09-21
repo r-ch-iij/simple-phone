@@ -39,11 +39,17 @@ echo "=== APK ビルド ($BUILD_TYPE) ==="
 rm -rf app/.cxx
 
 EXTRA_PROPS=""
-APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
-APK_DST="kyf42-phone.apk"
+# フレーバー別 APK（assembleDebug/assembleRelease は全フレーバーをビルドする）
 if [ "$BUILD_TYPE" = "release" ]; then
-    APK_SRC="app/build/outputs/apk/release/app-release.apk"
-    APK_DST="kyf42-phone-release.apk"
+    declare -A APKS=(
+        ["app/build/outputs/apk/kyf39/release/app-kyf39-release.apk"]="kyf39-phone-release.apk"
+        ["app/build/outputs/apk/kyf42/release/app-kyf42-release.apk"]="kyf42-phone-release.apk"
+    )
+else
+    declare -A APKS=(
+        ["app/build/outputs/apk/kyf39/debug/app-kyf39-debug.apk"]="kyf39-phone.apk"
+        ["app/build/outputs/apk/kyf42/debug/app-kyf42-debug.apk"]="kyf42-phone.apk"
+    )
 fi
 # 署名鍵の準備（/output はホストにマウントされているため永続化される）
 KEYSTORE="${KEYSTORE:-/output/${BUILD_TYPE}.keystore}"
@@ -66,10 +72,12 @@ gradle "assemble${BUILD_TYPE^}" --no-daemon $EXTRA_PROPS
 
 echo ""
 echo "=== ビルド完了 ==="
-ls -lh "$APK_SRC"
-
-# 出力先にコピー（所有者は Docker 実行後に docker-build.sh で修正）
 mkdir -p /output
-cp "$APK_SRC" "/output/$APK_DST"
-chmod 644 "/output/$APK_DST"
-echo "APK: /output/$APK_DST"
+for APK_SRC in "${!APKS[@]}"; do
+    APK_DST="${APKS[$APK_SRC]}"
+    ls -lh "$APK_SRC"
+    # 出力先にコピー（所有者は Docker 実行後に docker-build.sh で修正）
+    cp "$APK_SRC" "/output/$APK_DST"
+    chmod 644 "/output/$APK_DST"
+    echo "APK: /output/$APK_DST"
+done
