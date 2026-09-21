@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#112a46" />
+    <meta
+      name="description"
+      content="simple-phone に SIP アカウントを登録するための QR コードをブラウザ内で生成します"
+    />
+    <title>simple-phone - SIP 設定 QR コード生成</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="./" aria-label="simple-phone QRコード生成">
+          <span>
+            <strong>simple-phone</strong>
+            <small>SIP 設定向け QR コード設定ツール</small>
+          </span>
+        </a>
+      </div>
+    </header>
+
+    <main>
+      <div class="workspace">
+        <section class="panel form-panel" aria-labelledby="settings-title">
+          <div class="panel-heading">
+            <span class="step-number" aria-hidden="true">1</span>
+            <div>
+              <h2 id="settings-title">SIP 接続情報</h2>
+            </div>
+          </div>
+
+          <form id="sip-form" novalidate>
+            <div class="field-grid">
+              <div class="field full-width">
+                <label for="server">SIPサーバー <span>必須</span></label>
+                <input
+                  id="server"
+                  name="server"
+                  type="text"
+                  inputmode="url"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  maxlength="253"
+                  placeholder="pbx.example.com"
+                  aria-describedby="server-help server-error"
+                  required
+                />
+                <small id="server-help">ホスト名またはIPアドレス（sip: やポートは不要）</small>
+                <small class="error" id="server-error" aria-live="polite"></small>
+              </div>
+
+              <div class="field">
+                <label for="port">ポート <span>必須</span></label>
+                <input
+                  id="port"
+                  name="port"
+                  type="number"
+                  inputmode="numeric"
+                  min="1"
+                  max="65535"
+                  value="5060"
+                  aria-describedby="port-help port-error"
+                  required
+                />
+                <small id="port-help">通常は5060です</small>
+                <small class="error" id="port-error" aria-live="polite"></small>
+              </div>
+
+              <div class="field">
+                <label for="user">内線番号 / ユーザー名 <span>必須</span></label>
+                <input
+                  id="user"
+                  name="user"
+                  type="text"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  maxlength="128"
+                  placeholder="203"
+                  aria-describedby="user-error"
+                  required
+                />
+                <small class="error" id="user-error" aria-live="polite"></small>
+              </div>
+
+              <div class="field full-width">
+                <label for="password">SIP パスワード <span>必須</span></label>
+                <div class="password-input">
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autocomplete="new-password"
+                    maxlength="256"
+                    placeholder="SIPアカウントのパスワード"
+                    aria-describedby="password-error"
+                    required
+                  />
+                  <button
+                    class="visibility-button"
+                    id="toggle-password"
+                    type="button"
+                    aria-pressed="false"
+                    aria-label="パスワードを表示"
+                  >表示</button>
+                </div>
+                <small class="error" id="password-error" aria-live="polite"></small>
+              </div>
+
+              <div class="field full-width">
+                <label for="realm">認証 realm <em>任意</em></label>
+                <input
+                  id="realm"
+                  name="realm"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  maxlength="128"
+                  placeholder="asterisk"
+                  aria-describedby="realm-help"
+                />
+                <small id="realm-help">指定がない場合は空欄のままにします</small>
+              </div>
+            </div>
+
+            <button class="primary-button" type="submit">
+              QR コードを生成
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+        </section>
+
+        <section class="panel output-panel" aria-labelledby="output-title">
+          <div class="panel-heading">
+            <span class="step-number" aria-hidden="true">2</span>
+            <div>
+              <h2 id="output-title">QR コード</h2>
+              <p>simple-phone の設定画面から読み取ります。</p>
+            </div>
+          </div>
+
+          <div class="qr-stage" id="qr-stage">
+            <div class="qr-placeholder" id="qr-placeholder">
+              <span class="placeholder-icon" aria-hidden="true"></span>
+              <strong>接続情報を入力してください</strong>
+              <small>生成した QR コードがここに表示されます</small>
+            </div>
+            <canvas
+              id="qr-canvas"
+              width="360"
+              height="360"
+              role="img"
+              aria-label="SIP 設定 QR コード"
+              hidden
+            ></canvas>
+          </div>
+
+          <div class="payload-card" id="payload-card" hidden>
+            <div class="payload-heading">
+              <span>QR コードの内容</span>
+              <button id="toggle-payload" type="button" aria-pressed="false">パスワードを表示</button>
+            </div>
+            <code id="payload-preview"></code>
+          </div>
+
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+
+          <div class="output-actions">
+            <button class="secondary-button" id="download-button" type="button" disabled>
+              PNG を保存
+            </button>
+            <button class="secondary-button" id="copy-button" type="button" disabled>
+              設定文字列をコピー
+            </button>
+            <button class="text-button" id="print-button" type="button" disabled>
+              印刷
+            </button>
+          </div>
+
+          <ol class="scan-guide">
+            <li><span>1</span>simple-phone の設定画面を開く</li>
+            <li><span>2</span>「QR コードから設定を読み取る」を選ぶ</li>
+            <li><span>3</span>この QR コードをカメラにかざす</li>
+          </ol>
+        </section>
+      </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
