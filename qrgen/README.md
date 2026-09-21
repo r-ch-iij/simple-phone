@@ -14,12 +14,12 @@ sip:<ユーザー名>:<パスワード>@<ホスト>:<ポート>[;realm=<realm>]
 
 ## ローカル実行
 
-Node.js 22.12以降が必要です。
+Bun 1.4.2が必要です。
 
 ```bash
 cd qrgen
-npm ci
-npm run dev
+bun ci
+bun run dev
 ```
 
 表示されたローカルURLをブラウザで開きます。
@@ -27,11 +27,11 @@ npm run dev
 ## テストとビルド
 
 ```bash
-npm test
-npm run build
+bun test
+bun run build
 ```
 
-静的ファイルは `dist/` に生成されます。`npm run preview` でビルド結果を確認できます。
+静的ファイルは `dist/` に生成されます。`bun run preview` でビルド結果を確認できます。
 
 ## GitHub Pagesへの公開
 
