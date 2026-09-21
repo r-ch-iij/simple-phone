@@ -111,8 +111,10 @@ object SipConfig {
     fun buildAor(context: Context): String {
         val user = getUser(context)
         val server = getServer(context)
+        val port = getPort(context)
         val password = getPassword(context)
-        return "<sip:$user@$server>;auth_user=$user;auth_pass=$password"
+        val authority = if (server.contains(":")) server else "$server:$port"
+        return "<sip:$user@$authority>;auth_user=$user;auth_pass=$password;regint=60"
     }
 
     fun set(context: Context, key: String, value: Any) {

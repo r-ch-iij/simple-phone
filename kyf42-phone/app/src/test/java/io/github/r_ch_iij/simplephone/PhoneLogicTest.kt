@@ -365,6 +365,18 @@ class PhoneLogicTest {
     }
 
     @Test
+    fun `KYF39のSK2は応答キー132`() {
+        assertEquals(131, MainActivity.softKey1Code(22))
+        assertEquals(132, MainActivity.softKey2Code(22))
+    }
+
+    @Test
+    fun `KYF42のSK2は応答キー133`() {
+        assertEquals(132, MainActivity.softKey1Code(29))
+        assertEquals(133, MainActivity.softKey2Code(29))
+    }
+
+    @Test
     fun `物理キー配置と設定キーの対応`() {
         // getevent の順序: 左上→F1, 左下→F3, 右上→F2, 右下→F4
         val physicalMapping = mapOf(

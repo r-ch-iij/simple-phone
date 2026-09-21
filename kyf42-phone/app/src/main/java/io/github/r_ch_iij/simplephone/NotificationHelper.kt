@@ -117,6 +117,7 @@ class NotificationHelper(private val context: Context) {
             context, 1,
             Intent(context, MainActivity::class.java).apply {
                 action = SipService.INCOMING_CALL_ACTION
+                putExtra(SipService.EXTRA_CALLER, callerNumber)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             },
             pendingFlags()
@@ -127,9 +128,12 @@ class NotificationHelper(private val context: Context) {
                 .setContentTitle("着信中")
                 .setContentText(callerNumber)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setCategory(Notification.CATEGORY_CALL)
+                .setPriority(Notification.PRIORITY_MAX)
                 .setFullScreenIntent(fullScreenPending, true)
                 .addAction(android.R.drawable.ic_menu_call, "応答", answerPending)
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, "拒否", rejectPending)
+                .setOngoing(true)
                 .setAutoCancel(true)
                 .build()
         } else {
@@ -137,9 +141,12 @@ class NotificationHelper(private val context: Context) {
                 .setContentTitle("着信中")
                 .setContentText(callerNumber)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setCategory(Notification.CATEGORY_CALL)
+                .setPriority(Notification.PRIORITY_MAX)
                 .setFullScreenIntent(fullScreenPending, true)
                 .addAction(android.R.drawable.ic_menu_call, "応答", answerPending)
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, "拒否", rejectPending)
+                .setOngoing(true)
                 .setAutoCancel(true)
                 .build()
         }

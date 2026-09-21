@@ -231,6 +231,36 @@ struct remain_post {
 
 static int g_re_async_ready = 0;
 
+static int wait_for_re_main_ready(int timeout_ms) {
+    int waited_ms = 0;
+
+    while (!g_re_running && waited_ms < timeout_ms) {
+        usleep(10000);
+        waited_ms += 10;
+    }
+
+    return g_re_running ? 0 : ETIMEDOUT;
+}
+
+static void build_server_authority(char *buf, size_t size) {
+    const bool server_has_port = strchr(SIP_SERVER_STR, ':') != NULL;
+
+    if (server_has_port) {
+        snprintf(buf, size, "%s", SIP_SERVER_STR);
+    } else {
+        snprintf(buf, size, "%s:%d", SIP_SERVER_STR, SIP_PORT_INT);
+    }
+}
+
+static void build_account_aor(char *buf, size_t size) {
+    char authority[96];
+
+    build_server_authority(authority, sizeof(authority));
+    snprintf(buf, size,
+             "<sip:%s@%s>;auth_user=%s;auth_pass=%s;regint=60",
+             SIP_USER_STR, authority, SIP_USER_STR, SIP_PASS_STR);
+}
+
 static void ensure_re_async(void) {
     if (g_re_async_ready)
         return;
@@ -274,11 +304,11 @@ static void register_worker(void *arg) {
     (void)arg;
     struct ua *ua = NULL;
     char aor[256];
+    char authority[96];
 
-    snprintf(aor, sizeof(aor), "<sip:%s@%s>;auth_user=%s;auth_pass=%s",
-             SIP_USER_STR, SIP_SERVER_STR, SIP_USER_STR, SIP_PASS_STR);
-    LOGI("register_worker: aor=<sip:%s@%s>;auth_user=%s;auth_pass=***",
-         SIP_USER_STR, SIP_SERVER_STR, SIP_USER_STR);
+    build_account_aor(aor, sizeof(aor));
+    build_server_authority(authority, sizeof(authority));
+    LOGI("register_worker: user=%s authority=%s", SIP_USER_STR, authority);
 
     if (g_ua) {
         LOGI("register_worker: ua already exists, skip");
@@ -632,6 +662,8 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeInit(
     err = pthread_create(&g_re_thread, NULL, re_main_thread, NULL);
     if (err) {
         LOGE("pthread_create failed: %d", err);
+    } else if (wait_for_re_main_ready(500) != 0) {
+        LOGW("nativeInit: re_main did not become ready within 500ms");
     }
 
     LOGI("nativeInit: baresip initialized successfully");
@@ -660,10 +692,15 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeDestroy(JNIEnv *env, jobje
 JNIEXPORT void JNICALL
 Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeRegister(JNIEnv *env, jobject thiz) {
     LOGI("nativeRegister");
+    if (wait_for_re_main_ready(500) != 0) {
+        LOGE("nativeRegister: re_main not ready");
+        call_callback_str("onRegistrationFailed", "SIP起動待ちタイムアウト");
+        return;
+    }
     int err = remain_run(register_worker, NULL);
     if (err) {
-        LOGW("nativeRegister: remain_run failed (%d), running directly", err);
-        register_worker(NULL);
+        LOGE("nativeRegister: remain_run failed: %d", err);
+        call_callback_str("onRegistrationFailed", "登録キュー投入エラー");
     }
 }
 
@@ -682,7 +719,7 @@ JNIEXPORT void JNICALL
 Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeReregister(
     JNIEnv *env, jobject thiz, jstring aor) {
     const char *aor_str = (*env)->GetStringUTFChars(env, aor, NULL);
-    LOGI("nativeReregister: aor=<sip:%s>", aor_str);
+    LOGI("nativeReregister: scheduling re-registration");
 
     char *aor_dup = NULL;
     if (str_dup(&aor_dup, aor_str)) {
@@ -691,10 +728,19 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeReregister(
         return;
     }
 
+    if (wait_for_re_main_ready(500) != 0) {
+        LOGE("nativeReregister: re_main not ready");
+        mem_deref(aor_dup);
+        (*env)->ReleaseStringUTFChars(env, aor, aor_str);
+        call_callback_str("onRegistrationFailed", "SIP起動待ちタイムアウト");
+        return;
+    }
+
     int err = remain_run(reregister_worker, aor_dup);
     if (err) {
-        LOGW("nativeReregister: remain_run failed (%d), running directly", err);
-        reregister_worker(aor_dup);
+        LOGE("nativeReregister: remain_run failed: %d", err);
+        mem_deref(aor_dup);
+        call_callback_str("onRegistrationFailed", "再登録キュー投入エラー");
     }
 
     (*env)->ReleaseStringUTFChars(env, aor, aor_str);
@@ -707,11 +753,13 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeMakeCall(
     LOGI("nativeMakeCall: %s", number_str);
 
     char uri_buf[256];
+    char authority[96];
     // 既に sip: で始まっている場合はそのまま、否则は sip:user@server を組み立てる
     if (strncmp(number_str, "sip:", 4) == 0 || strncmp(number_str, "tel:", 4) == 0) {
         snprintf(uri_buf, sizeof(uri_buf), "%s", number_str);
     } else {
-        snprintf(uri_buf, sizeof(uri_buf), "sip:%s@%s", number_str, SIP_SERVER_STR);
+        build_server_authority(authority, sizeof(authority));
+        snprintf(uri_buf, sizeof(uri_buf), "sip:%s@%s", number_str, authority);
     }
 
     char *uri = NULL;
