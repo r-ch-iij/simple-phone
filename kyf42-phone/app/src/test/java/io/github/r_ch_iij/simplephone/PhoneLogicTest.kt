@@ -365,21 +365,30 @@ class PhoneLogicTest {
     }
 
     @Test
-    fun `KYF39のSK2は応答キー132`() {
-        assertEquals(131, MainActivity.softKey1Code("KYF39"))
-        assertEquals(132, MainActivity.softKey2Code("KYF39"))
+    fun `ガイド位置1(左上)はF1`() {
+        assertEquals(131, MainActivity.guideKeyCode(1))
     }
 
     @Test
-    fun `KYF42のSK2は応答キー133`() {
-        assertEquals(132, MainActivity.softKey1Code("KYF42"))
-        assertEquals(133, MainActivity.softKey2Code("KYF42"))
+    fun `ガイド位置2(右上)はF2`() {
+        assertEquals(132, MainActivity.guideKeyCode(2))
     }
 
     @Test
-    fun `未知の機種はKYF42マッピングにフォールバック`() {
-        assertEquals(132, MainActivity.softKey1Code("UNKNOWN"))
-        assertEquals(133, MainActivity.softKey2Code("UNKNOWN"))
+    fun `ガイド位置3(左下)はF3`() {
+        assertEquals(133, MainActivity.guideKeyCode(3))
+    }
+
+    @Test
+    fun `ガイド位置4(右下)はF4`() {
+        assertEquals(134, MainActivity.guideKeyCode(4))
+    }
+
+    @Test
+    fun `通話中ミュート(右上F2)は音量▼(左下F3)と衝突しない`() {
+        // 実際のバグ: KYF42 でミュートを F3(左下)=音量▼ に割り当てていた
+        assertEquals(132, MainActivity.guideKeyCode(2))
+        assertNotEquals(MainActivity.guideKeyCode(2), MainActivity.guideKeyCode(3))
     }
 
     @Test
