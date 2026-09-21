@@ -36,22 +36,9 @@ void rtpwatch_mark_rx(void)
 }
 
 
-struct rtpwatch_enc {
-	struct aufilt_enc_st af;  /* base class */
-};
-
-
 struct rtpwatch_dec {
 	struct aufilt_dec_st af;  /* base class */
 };
-
-
-static void enc_destructor(void *arg)
-{
-	struct rtpwatch_enc *st = arg;
-
-	list_unlink(&st->af.le);
-}
 
 
 static void dec_destructor(void *arg)
@@ -59,40 +46,6 @@ static void dec_destructor(void *arg)
 	struct rtpwatch_dec *st = arg;
 
 	list_unlink(&st->af.le);
-}
-
-
-static int encode_update(struct aufilt_enc_st **stp, void **ctx,
-			 const struct aufilt *af, struct aufilt_prm *prm,
-			 const struct audio *au)
-{
-	struct rtpwatch_enc *st;
-
-	(void)ctx;
-	(void)af;
-	(void)prm;
-	(void)au;
-
-	if (!stp)
-		return EINVAL;
-
-	st = mem_zalloc(sizeof(*st), enc_destructor);
-	if (!st)
-		return ENOMEM;
-
-	*stp = st;
-
-	return 0;
-}
-
-
-/* 送信側は監視しない（パススルー） */
-static int encode_frame(struct aufilt_enc_st *st, struct auframe *af)
-{
-	(void)st;
-	(void)af;
-
-	return 0;
 }
 
 
@@ -132,10 +85,9 @@ static int decode_frame(struct aufilt_dec_st *st, struct auframe *af)
 }
 
 
+// 送信側は監視しないため encode ハンドラは登録しない（decode-only）。
 static struct aufilt rtpwatch = {
 	.name    = "rtpwatch",
-	.encupdh = encode_update,
-	.ench    = encode_frame,
 	.decupdh = decode_update,
 	.dech    = decode_frame
 };

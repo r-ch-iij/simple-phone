@@ -71,7 +71,8 @@ static char SIP_REALM_STR[32] = "";
 static int SIP_PORT_INT = 5060;
 
 // ========== コールバックヘルパー ==========
-static void call_callback_str(const char *method, const char *msg) {
+// sig は "()V"（引数なし）または "(Ljava/lang/String;)V"。msg==NULL で引数なし呼び出し。
+static void call_callback(const char *method, const char *sig, const char *msg) {
     if (g_callback == NULL) return;
     JNIEnv *env;
     int getEnvStat = (*g_vm)->GetEnv(g_vm, (void **)&env, JNI_VERSION_1_6);
@@ -80,25 +81,15 @@ static void call_callback_str(const char *method, const char *msg) {
     }
     if (env == NULL) return;
     jclass cls = (*env)->GetObjectClass(env, g_callback);
-    jmethodID mid = (*env)->GetMethodID(env, cls, method, "(Ljava/lang/String;)V");
-    if (mid) {
+    jmethodID mid = (*env)->GetMethodID(env, cls, method, sig);
+    if (!mid) return;
+    if (msg) {
         jstring jmsg = (*env)->NewStringUTF(env, msg);
         (*env)->CallVoidMethod(env, g_callback, mid, jmsg);
         (*env)->DeleteLocalRef(env, jmsg);
+    } else {
+        (*env)->CallVoidMethod(env, g_callback, mid);
     }
-}
-
-static void call_callback_void(const char *method) {
-    if (g_callback == NULL) return;
-    JNIEnv *env;
-    int getEnvStat = (*g_vm)->GetEnv(g_vm, (void **)&env, JNI_VERSION_1_6);
-    if (getEnvStat == JNI_EDETACHED) {
-        (*g_vm)->AttachCurrentThread(g_vm, &env, NULL);
-    }
-    if (env == NULL) return;
-    jclass cls = (*env)->GetObjectClass(env, g_callback);
-    jmethodID mid = (*env)->GetMethodID(env, cls, method, "()V");
-    if (mid) (*env)->CallVoidMethod(env, g_callback, mid);
 }
 
 // ========== baresip ログ転送（logcat 可視化） ==========
@@ -148,11 +139,11 @@ static void baresip_event_handler(struct ua *ua, enum ua_event ev,
     switch (ev) {
     case UA_EVENT_REGISTER_OK:
         g_registered = 1;
-        call_callback_void("onRegistered");
+        call_callback("onRegistered", "()V", NULL);
         break;
     case UA_EVENT_REGISTER_FAIL:
         g_registered = 0;
-        call_callback_str("onRegistrationFailed",
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V",
                           prm ? prm : "registration failed");
         break;
     case UA_EVENT_CALL_OUTGOING:
@@ -178,9 +169,9 @@ static void baresip_event_handler(struct ua *ua, enum ua_event ev,
             if (at && (size_t)(at - user_start) < sizeof(user_buf)) {
                 memcpy(user_buf, user_start, at - user_start);
                 user_buf[at - user_start] = '\0';
-                call_callback_str("onIncomingCall", user_buf);
+                call_callback("onIncomingCall", "(Ljava/lang/String;)V", user_buf);
             } else {
-                call_callback_str("onIncomingCall", user_start);
+                call_callback("onIncomingCall", "(Ljava/lang/String;)V", user_start);
             }
         }
         break;
@@ -190,7 +181,7 @@ static void baresip_event_handler(struct ua *ua, enum ua_event ev,
         // 通話開始を起点にメディア監視を開始する
         rtpwatch_mark_rx();
         watchdog_start();
-        call_callback_void("onCallStarted");
+        call_callback("onCallStarted", "()V", NULL);
         break;
     case UA_EVENT_CALL_RTCP:
         // RTCP 受信（SR/APP のみイベント化されるため疎）。補助信号として更新
@@ -203,11 +194,11 @@ static void baresip_event_handler(struct ua *ua, enum ua_event ev,
             // （リモート終話・多重通話解消の両対応）
             g_call = NULL;
             g_in_call = 0;
-            call_callback_void("onCallEnded");
+            call_callback("onCallEnded", "()V", NULL);
         }
         break;
     case UA_EVENT_AUDIO_ERROR:
-        call_callback_str("onCallFailed", prm ? prm : "通話エラー");
+        call_callback("onCallFailed", "(Ljava/lang/String;)V", prm ? prm : "通話エラー");
         break;
     default:
         break;
@@ -298,11 +289,39 @@ static int remain_run(remain_h handler, void *arg) {
     return err;
 }
 
+// remain_run 失敗時はその場で実行する（起動直後のキュー投入失敗対策）。
+static void remain_run_or_direct(const char *tag, remain_h handler, void *arg) {
+    int err = remain_run(handler, arg);
+    if (err) {
+        LOGW("%s: remain_run failed (%d), running directly", tag, err);
+        handler(arg);
+    }
+}
+
 // ========== re_main スレッドで実行する各操作 ==========
+
+// UA を作り直して登録する（register/reregister 共通）。成功時 0。
+static int ua_create_and_register(const char *aor) {
+    int err = ua_alloc(&g_ua, aor);
+    if (err) {
+        LOGE("ua_alloc failed: %d", err);
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "UA作成エラー");
+        return err;
+    }
+
+    err = ua_register(g_ua);
+    if (err) {
+        LOGE("ua_register failed: %d", err);
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "登録エラー");
+        return err;
+    }
+
+    LOGI("registration started");
+    return 0;
+}
 
 static void register_worker(void *arg) {
     (void)arg;
-    struct ua *ua = NULL;
     char aor[256];
     char authority[96];
 
@@ -315,22 +334,8 @@ static void register_worker(void *arg) {
         return;
     }
 
-    int err = ua_alloc(&g_ua, aor);
-    if (err) {
-        LOGE("ua_alloc failed: %d", err);
-        call_callback_str("onRegistrationFailed", "UA作成エラー");
-        return;
-    }
-
-    err = ua_register(g_ua);
-    if (err) {
-        LOGE("ua_register failed: %d", err);
-        call_callback_str("onRegistrationFailed", "登録エラー");
-        return;
-    }
-
-    LOGI("register_worker: registration started");
-    call_callback_str("onDebug", "SIP 登録中...");
+    if (ua_create_and_register(aor) == 0)
+        call_callback("onDebug", "(Ljava/lang/String;)V", "SIP 登録中...");
 }
 
 static void unregister_worker(void *arg) {
@@ -351,20 +356,8 @@ static void reregister_worker(void *arg) {
     g_call = NULL;
     g_in_call = 0;
 
-    int err = ua_alloc(&g_ua, aor_str);
-    if (err) {
-        LOGE("reregister_worker: ua_alloc failed: %d", err);
-        call_callback_str("onRegistrationFailed", "UA作成エラー");
-    } else {
-        err = ua_register(g_ua);
-        if (err) {
-            LOGE("reregister_worker: ua_register failed: %d", err);
-            call_callback_str("onRegistrationFailed", "登録エラー");
-        } else {
-            LOGI("reregister_worker: registration started");
-            call_callback_str("onDebug", "SIP 再登録中...");
-        }
-    }
+    if (ua_create_and_register(aor_str) == 0)
+        call_callback("onDebug", "(Ljava/lang/String;)V", "SIP 再登録中...");
 
     mem_deref(aor_str);
 }
@@ -387,7 +380,7 @@ static void makecall_worker(void *arg) {
         int err = ua_connect(g_ua, &call, NULL, uri, VIDMODE_OFF);
         if (err) {
             LOGE("ua_connect failed: %d", err);
-            call_callback_str("onCallFailed", "発信エラー");
+            call_callback("onCallFailed", "(Ljava/lang/String;)V", "発信エラー");
         } else {
             LOGI("ua_connect succeeded: call=%p", call);
         }
@@ -617,11 +610,7 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeInit(
     // 既に初期化済み（サービス再起動等）なら再初期化せず戻る
     if (g_initialized) {
         LOGI("nativeInit: already initialized, skip");
-        (*env)->ReleaseStringUTFChars(env, server, server_str);
-        (*env)->ReleaseStringUTFChars(env, user, user_str);
-        (*env)->ReleaseStringUTFChars(env, pass, pass_str);
-        (*env)->ReleaseStringUTFChars(env, realm, realm_str);
-        return;
+        goto cleanup;
     }
 
     // 設定を保存
@@ -634,13 +623,13 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeInit(
     // libre 初期化（先にログ転送を有効化して警告を可視化する）
     init_bs_log();
     if (init_libre()) {
-        call_callback_str("onRegistrationFailed", "libre初期化エラー");
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "libre初期化エラー");
         goto cleanup;
     }
 
     // baresip 初期化
     if (init_baresip()) {
-        call_callback_str("onRegistrationFailed", "baresip初期化エラー");
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "baresip初期化エラー");
         goto cleanup;
     }
 
@@ -651,7 +640,7 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeInit(
     int err = ua_init("SimplePhone/1.0", true, true, false);
     if (err) {
         LOGE("ua_init failed: %d", err);
-        call_callback_str("onRegistrationFailed", "SIPスタック初期化エラー");
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "SIPスタック初期化エラー");
         goto cleanup;
     }
 
@@ -694,24 +683,20 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeRegister(JNIEnv *env, jobj
     LOGI("nativeRegister");
     if (wait_for_re_main_ready(500) != 0) {
         LOGE("nativeRegister: re_main not ready");
-        call_callback_str("onRegistrationFailed", "SIP起動待ちタイムアウト");
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "SIP起動待ちタイムアウト");
         return;
     }
     int err = remain_run(register_worker, NULL);
     if (err) {
         LOGE("nativeRegister: remain_run failed: %d", err);
-        call_callback_str("onRegistrationFailed", "登録キュー投入エラー");
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "登録キュー投入エラー");
     }
 }
 
 JNIEXPORT void JNICALL
 Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeUnregister(JNIEnv *env, jobject thiz) {
     LOGI("nativeUnregister");
-    int err = remain_run(unregister_worker, NULL);
-    if (err) {
-        LOGW("nativeUnregister: remain_run failed (%d), running directly", err);
-        unregister_worker(NULL);
-    }
+    remain_run_or_direct("nativeUnregister", unregister_worker, NULL);
 }
 
 // アカウント設定を変更して再登録（baresip/libre の再初期化は行わない）
@@ -732,7 +717,7 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeReregister(
         LOGE("nativeReregister: re_main not ready");
         mem_deref(aor_dup);
         (*env)->ReleaseStringUTFChars(env, aor, aor_str);
-        call_callback_str("onRegistrationFailed", "SIP起動待ちタイムアウト");
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "SIP起動待ちタイムアウト");
         return;
     }
 
@@ -740,7 +725,7 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeReregister(
     if (err) {
         LOGE("nativeReregister: remain_run failed: %d", err);
         mem_deref(aor_dup);
-        call_callback_str("onRegistrationFailed", "再登録キュー投入エラー");
+        call_callback("onRegistrationFailed", "(Ljava/lang/String;)V", "再登録キュー投入エラー");
     }
 
     (*env)->ReleaseStringUTFChars(env, aor, aor_str);
@@ -769,11 +754,7 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeMakeCall(
         return;
     }
 
-    int err = remain_run(makecall_worker, uri);
-    if (err) {
-        LOGW("nativeMakeCall: remain_run failed (%d), running directly", err);
-        makecall_worker(uri);
-    }
+    remain_run_or_direct("nativeMakeCall", makecall_worker, uri);
 
     (*env)->ReleaseStringUTFChars(env, number, number_str);
 }
@@ -781,43 +762,27 @@ Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeMakeCall(
 JNIEXPORT void JNICALL
 Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeAnswerCall(JNIEnv *env, jobject thiz) {
     LOGI("nativeAnswerCall");
-    int err = remain_run(answer_worker, NULL);
-    if (err) {
-        LOGW("nativeAnswerCall: remain_run failed (%d), running directly", err);
-        answer_worker(NULL);
-    }
+    remain_run_or_direct("nativeAnswerCall", answer_worker, NULL);
 }
 
 JNIEXPORT void JNICALL
 Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeEndCall(JNIEnv *env, jobject thiz) {
     LOGI("nativeEndCall");
-    int err = remain_run(endcall_worker, NULL);
-    if (err) {
-        LOGW("nativeEndCall: remain_run failed (%d), running directly", err);
-        endcall_worker(NULL);
-    }
+    remain_run_or_direct("nativeEndCall", endcall_worker, NULL);
 }
 
 JNIEXPORT void JNICALL
 Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeSendDtmf(
     JNIEnv *env, jobject thiz, jchar digit) {
     LOGI("nativeSendDtmf: %c", digit);
-    int err = remain_run(dtmf_worker, (void *)(intptr_t)digit);
-    if (err) {
-        LOGW("nativeSendDtmf: remain_run failed (%d), running directly", err);
-        dtmf_worker((void *)(intptr_t)digit);
-    }
+    remain_run_or_direct("nativeSendDtmf", dtmf_worker, (void *)(intptr_t)digit);
 }
 
 JNIEXPORT void JNICALL
 Java_io_github_r_1ch_1iij_simplephone_NativeSip_nativeSetMute(
     JNIEnv *env, jobject thiz, jboolean mute) {
     LOGI("nativeSetMute: %d", mute ? 1 : 0);
-    int err = remain_run(mute_worker, (void *)(intptr_t)(mute ? 1 : 0));
-    if (err) {
-        LOGW("nativeSetMute: remain_run failed (%d), running directly", err);
-        mute_worker((void *)(intptr_t)(mute ? 1 : 0));
-    }
+    remain_run_or_direct("nativeSetMute", mute_worker, (void *)(intptr_t)(mute ? 1 : 0));
 }
 
 JNIEXPORT jboolean JNICALL

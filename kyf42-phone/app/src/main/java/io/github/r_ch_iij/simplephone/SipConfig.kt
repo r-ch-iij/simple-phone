@@ -68,24 +68,6 @@ object SipConfig {
         KEY_ACTION_4 to ACTION_NONE
     )
 
-    // 後方互換: 旧 FKEY_* 定数を新しい ACTION_* にエイリアス
-    const val FKEY_F1 = KEY_ACTION_1
-    const val FKEY_F2 = KEY_ACTION_2
-    const val FKEY_F3 = KEY_ACTION_3
-    const val FKEY_F4 = KEY_ACTION_4
-    const val FKEY_NONE = ACTION_NONE
-    const val FKEY_REDIAL = ACTION_REDIAL
-    const val FKEY_SETTINGS = ACTION_SETTINGS
-    const val FKEY_CLEAR_ALL = ACTION_CLEAR_ALL
-    const val FKEY_CLEAR_ONE = ACTION_CLEAR_ONE
-    const val FKEY_CALL = ACTION_CALL
-    const val FKEY_MUTE = ACTION_MUTE
-    const val FKEY_VOLUME_UP = ACTION_VOLUME_UP
-    const val FKEY_VOLUME_DOWN = ACTION_VOLUME_DOWN
-    const val SK1 = KEY_ACTION_1
-    const val SK2 = KEY_ACTION_2
-    const val SK3 = KEY_ACTION_3
-
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -100,10 +82,6 @@ object SipConfig {
 
     fun getAction(context: Context, key: String): String =
         prefs(context).getString(key, ACTION_DEFAULTS[key] ?: ACTION_NONE)!!
-
-    // 後方互換
-    fun getFKey(context: Context, key: String): String = getAction(context, key)
-    fun getSoftKey(context: Context, key: String): String = getAction(context, key)
 
     fun isConfigured(context: Context): Boolean =
         getServer(context).isNotEmpty() && getUser(context).isNotEmpty() && getPassword(context).isNotEmpty()

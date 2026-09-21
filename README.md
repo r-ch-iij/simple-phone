@@ -76,4 +76,4 @@ SIP サーバのアドレス・内線番号・パスワード等の実運用値�
 * `libmbedtls.a` / `libmbedcrypto.a` / `libmbedx509.a` — Mbed TLS
 
 > baresip / re / rem / mbedtls はいずれもフォーク版を `native/` 配下に vendoring しています
-> （`.gitmodules` は未使用）。ビルド手順は `native/build_baresip_manual.sh` を参照。
+> （`.gitmodules` は未使用）。ビルド手順は `native/build_all.sh` を参照。

@@ -14,8 +14,11 @@ import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
+import android.view.View
+import android.view.Window
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -426,7 +429,7 @@ class MainActivity : Activity(), SipService.Listener {
                 currentNumber.append(digit)
                 updateNumberDisplay()
             }
-            is CallState.Active -> sipService?.sendDtmf(digit)
+            is CallState.Active -> if (digit.isNotEmpty()) sipService?.sendDtmf(digit[0])
             is CallState.Incoming, is CallState.Outgoing -> { /* 着信中・発信中は無視 */ }
         }
     }
@@ -513,25 +516,22 @@ class MainActivity : Activity(), SipService.Listener {
     // 画面内 4ボタン（物理キーパッドを模倣）。
     // ソフトキーガイドが利用可能な場合は非表示、利用不可の場合は表示（フォールバック）
     private fun setupKeypadButtons() {
-        val keypadArea = findViewById<android.widget.LinearLayout>(R.id.keypadArea)
-        val tl = findViewById<Button>(R.id.btnKeypadTL)
-        val tr = findViewById<Button>(R.id.btnKeypadTR)
-        val bl = findViewById<Button>(R.id.btnKeypadBL)
-        val br = findViewById<Button>(R.id.btnKeypadBR)
+        val keypadArea = findViewById<LinearLayout>(R.id.keypadArea)
 
-        // 統一キー設定を使用
-        tl.text = SipConfig.fKeyLabel(SipConfig.getAction(this, SipConfig.KEY_ACTION_1))
-        tr.text = SipConfig.fKeyLabel(SipConfig.getAction(this, SipConfig.KEY_ACTION_2))
-        bl.text = SipConfig.fKeyLabel(SipConfig.getAction(this, SipConfig.KEY_ACTION_3))
-        br.text = SipConfig.fKeyLabel(SipConfig.getAction(this, SipConfig.KEY_ACTION_4))
-
-        tl.setOnClickListener { handleKeyAction(SipConfig.getAction(this, SipConfig.KEY_ACTION_1)) }
-        tr.setOnClickListener { handleKeyAction(SipConfig.getAction(this, SipConfig.KEY_ACTION_2)) }
-        bl.setOnClickListener { handleKeyAction(SipConfig.getAction(this, SipConfig.KEY_ACTION_3)) }
-        br.setOnClickListener { handleKeyAction(SipConfig.getAction(this, SipConfig.KEY_ACTION_4)) }
+        // （ボタン, 設定キー）の対応表で一括設定
+        listOf(
+            findViewById<Button>(R.id.btnKeypadTL) to SipConfig.KEY_ACTION_1,
+            findViewById<Button>(R.id.btnKeypadTR) to SipConfig.KEY_ACTION_2,
+            findViewById<Button>(R.id.btnKeypadBL) to SipConfig.KEY_ACTION_3,
+            findViewById<Button>(R.id.btnKeypadBR) to SipConfig.KEY_ACTION_4
+        ).forEach { (button, key) ->
+            // 統一キー設定を使用
+            button.text = SipConfig.fKeyLabel(SipConfig.getAction(this, key))
+            button.setOnClickListener { handleKeyAction(SipConfig.getAction(this, key)) }
+        }
 
         // ソフトキーガイドが利用可能な場合はグリッドUIを非表示
-        keypadArea.visibility = if (hasSoftKeyGuide) android.view.View.GONE else android.view.View.VISIBLE
+        keypadArea.visibility = if (hasSoftKeyGuide) View.GONE else View.VISIBLE
     }
 
     // Kyocera ソフトキーバーに 4 ボタンを表示する。
@@ -541,7 +541,7 @@ class MainActivity : Activity(), SipService.Listener {
     private fun setupSoftKeys(): Boolean {
         try {
             val guideClass = Class.forName("jp.kyocera.kcfp.util.KCfpSoftkeyGuide")
-            val getMethod = guideClass.getMethod("getSoftkeyGuide", android.view.Window::class.java)
+            val getMethod = guideClass.getMethod("getSoftkeyGuide", Window::class.java)
             val guide = getMethod.invoke(null, window) ?: return false
             val setText = guideClass.getMethod("setText", Int::class.java, CharSequence::class.java)
             val setEnabled = guideClass.getMethod("setEnabled", Int::class.java, Boolean::class.java)
@@ -658,7 +658,7 @@ class MainActivity : Activity(), SipService.Listener {
         if (!hasSoftKeyGuide) return
         try {
             val guideClass = Class.forName("jp.kyocera.kcfp.util.KCfpSoftkeyGuide")
-            val getMethod = guideClass.getMethod("getSoftkeyGuide", android.view.Window::class.java)
+            val getMethod = guideClass.getMethod("getSoftkeyGuide", Window::class.java)
             val guide = getMethod.invoke(null, window) ?: return
             val setText = guideClass.getMethod("setText", Int::class.java, CharSequence::class.java)
             val setEnabled = guideClass.getMethod("setEnabled", Int::class.java, Boolean::class.java)

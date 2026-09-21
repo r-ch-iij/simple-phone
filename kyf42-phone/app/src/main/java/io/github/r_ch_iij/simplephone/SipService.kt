@@ -93,22 +93,26 @@ class SipService : Service(), SipManager.SipCallback {
     // 遷移時のみ再登録する（初期登録との競合によるネイティブクラッシュ防止）。
     // また登録済みの場合のみ再登録する。
     @Volatile private var networkRearmNeeded = false
+    // 設定済み＋登録済みの場合のみ再登録する（2箇所のネットワーク復帰検知で共用）
+    private fun reregisterIfReady(tag: String) {
+        sipExecutor.execute {
+            try {
+                if (SipConfig.isConfigured(this@SipService) &&
+                    sipManager?.isRegistered() == true
+                ) {
+                    sipManager?.reregister()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "reregister on $tag failed", e)
+            }
+        }
+    }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             if (!networkRearmNeeded) return
             networkRearmNeeded = false
             Log.d(TAG, "network available after loss -> reregister")
-            sipExecutor.execute {
-                try {
-                    if (SipConfig.isConfigured(this@SipService) &&
-                        sipManager?.isRegistered() == true
-                    ) {
-                        sipManager?.reregister()
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "reregister on network available failed", e)
-                }
-            }
+            reregisterIfReady("network available")
         }
 
         override fun onLost(network: Network) {
@@ -128,17 +132,7 @@ class SipService : Service(), SipManager.SipCallback {
                 @Suppress("DEPRECATION")
                 if (info != null && info.isConnected) {
                     Log.d(TAG, "legacy network connected -> reregister")
-                    sipExecutor.execute {
-                        try {
-                            if (SipConfig.isConfigured(this@SipService) &&
-                                sipManager?.isRegistered() == true
-                            ) {
-                                sipManager?.reregister()
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "reregister on legacy network failed", e)
-                        }
-                    }
+                    reregisterIfReady("legacy network")
                 }
             }
         }
@@ -263,7 +257,7 @@ class SipService : Service(), SipManager.SipCallback {
 
     private fun notifyListeners(block: (Listener) -> Unit) {
         // リスナー通知はメインスレッドで実行（UI 更新用）
-        mainHandler.post { listeners.toList().forEach(block) }
+        mainHandler.post { listeners.forEach(block) }
     }
 
     // ---- SipManager.SipCallback ----
@@ -273,6 +267,25 @@ class SipService : Service(), SipManager.SipCallback {
 
     override fun onRegistrationFailed(reason: String) {
         notifyListeners { it.onStatus("登録失敗: $reason") }
+    }
+
+    // 通話画面（MainActivity）を前面に表示する。caller 指定時は着信通知つき
+    private fun showMainActivity(callerNumber: String? = null) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            if (callerNumber != null) {
+                action = INCOMING_CALL_ACTION
+                putExtra(EXTRA_CALLER, callerNumber)
+            }
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        startActivity(intent)
+    }
+
+    // 着信通知の後片付け＋通話終了の通知（開始/終了/失敗で共用）
+    private fun endRingingAndNotify(block: (Listener) -> Unit) {
+        notificationHelper.cancelIncomingCallNotification()
+        mainHandler.post { notificationHelper.stopRinging() }
+        notifyListeners(block)
     }
 
     override fun onIncomingCall(callerNumber: String) {
@@ -288,44 +301,25 @@ class SipService : Service(), SipManager.SipCallback {
         notificationHelper.showIncomingCallNotification(callerNumber)
 
         // Activity を前面に持ってくる
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            action = INCOMING_CALL_ACTION
-            putExtra(EXTRA_CALLER, callerNumber)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        startActivity(launchIntent)
+        showMainActivity(callerNumber)
 
         notifyListeners { it.onIncomingCall(callerNumber) }
     }
 
     override fun onCallStarted() {
         callActive = true
-        notificationHelper.cancelIncomingCallNotification()
-        mainHandler.post { notificationHelper.stopRinging() }
+        endRingingAndNotify { it.onCallStarted() }
         showMainActivity()
-        notifyListeners { it.onCallStarted() }
-    }
-
-    // 通話画面（MainActivity）を前面に表示する
-    private fun showMainActivity() {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        startActivity(intent)
     }
 
     override fun onCallEnded() {
         callActive = false
-        notificationHelper.cancelIncomingCallNotification()
-        mainHandler.post { notificationHelper.stopRinging() }
-        notifyListeners { it.onCallEnded() }
+        endRingingAndNotify { it.onCallEnded() }
     }
 
     override fun onCallFailed(reason: String) {
         callActive = false
-        notificationHelper.cancelIncomingCallNotification()
-        mainHandler.post { notificationHelper.stopRinging() }
-        notifyListeners { it.onCallFailed(reason) }
+        endRingingAndNotify { it.onCallFailed(reason) }
     }
 
     override fun onDebug(message: String) {
@@ -344,26 +338,30 @@ class SipService : Service(), SipManager.SipCallback {
     }
 
     // ---- 通話操作（MainActivity から）: バックグラウンドで実行 ----
+    private fun onSip(block: (SipManager) -> Unit) {
+        sipExecutor.execute { sipManager?.let(block) }
+    }
+
     fun makeCall(number: String) {
-        sipExecutor.execute { sipManager?.makeCall(number) }
+        onSip { it.makeCall(number) }
     }
 
     fun answerCall() {
         mainHandler.post { notificationHelper.stopRinging() }
-        sipExecutor.execute { sipManager?.answerCall() }
+        onSip { it.answerCall() }
     }
 
     fun endCall() {
         mainHandler.post { notificationHelper.stopRinging() }
-        sipExecutor.execute { sipManager?.endCall() }
+        onSip { it.endCall() }
     }
 
-    fun sendDtmf(digit: String) {
-        sipExecutor.execute { sipManager?.sendDtmf(digit) }
+    fun sendDtmf(digit: Char) {
+        onSip { it.sendDtmf(digit) }
     }
 
     fun setMute(mute: Boolean) {
-        sipExecutor.execute { sipManager?.setMute(mute) }
+        onSip { it.setMute(mute) }
     }
 
     /** 実際の通話状態をクエリ（ネイティブ層の状態が正） */

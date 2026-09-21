@@ -55,13 +55,10 @@ android {
     }
 
     buildTypes {
-        debug {
-            // デバッグ中は着信音・バイブなし（NotificationHelper.startRinging で参照）
-            buildConfigField("boolean", "ALERT_SILENT", "true")
-        }
+        // 着信音・バイブの有無は BuildConfig.DEBUG で判定
+        // （NotificationHelper.startRinging 参照）。
+        // debug=無音、release=着信音・バイブあり
         release {
-            // リリース版は着信音・バイブあり
-            buildConfigField("boolean", "ALERT_SILENT", "false")
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -71,8 +68,7 @@ android {
     // targetSdk はフレーバー別（kyf39=22 / kyf42=29）。
     // 本アプリはサイドロード運用（Google Play 非公開）のため Play 要件の lint を無効化。
     lint {
-        disable 'ExpiredTargetSdkVersion'
-        disable 'OldTargetApi'
+        disable 'ExpiredTargetSdkVersion', 'OldTargetApi'
     }
 
     compileOptions {

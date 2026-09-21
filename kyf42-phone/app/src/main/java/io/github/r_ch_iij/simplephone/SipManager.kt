@@ -36,19 +36,22 @@ class SipManager(private val context: Context, private val callback: SipCallback
         private const val TAG = "SipManager"
     }
 
-    interface SipCallback {
-        fun onRegistered()
-        fun onRegistrationFailed(reason: String)
-        fun onIncomingCall(callerNumber: String)
-        fun onCallStarted()
-        fun onCallEnded()
-        fun onCallFailed(reason: String)
-        fun onDebug(message: String)
-    }
+    // SipService が実装する通知先。NativeSip.Callback と同一型
+    //（別 interface を持つと 1:1 コピーの二重管理になる）。
+    typealias SipCallback = NativeSip.Callback
 
     private val nativeSip = NativeSip()
-    private var registered = false
     private val audioManager by lazy { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+
+    private fun setAudioMode(inCall: Boolean) {
+        audioManager.mode = if (inCall) {
+            AudioManager.MODE_IN_COMMUNICATION
+        } else {
+            AudioManager.MODE_NORMAL
+        }
+    }
+
+    private fun volumeGain(): Float = SipConfig.getVolumePct(context) / 100.0f
 
     fun start() {
         val server = SipConfig.getServer(context)
@@ -60,16 +63,14 @@ class SipManager(private val context: Context, private val callback: SipCallback
         Log.d(TAG, "start: server=$server:$port user=$user realm=$realm")
 
         // NativeSip コールバック設定
-        nativeSip.setCallback(object : NativeSip.Callback {
+        nativeSip.nativeSetCallback(object : NativeSip.Callback {
             override fun onRegistered() {
                 Log.d(TAG, "onRegistered")
-                registered = true
                 callback.onRegistered()
             }
 
             override fun onRegistrationFailed(reason: String) {
                 Log.e(TAG, "onRegistrationFailed: $reason")
-                registered = false
                 callback.onRegistrationFailed(reason)
             }
 
@@ -80,21 +81,20 @@ class SipManager(private val context: Context, private val callback: SipCallback
 
             override fun onCallStarted() {
                 Log.d(TAG, "onCallStarted")
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                setAudioMode(inCall = true)
                 callback.onCallStarted()
             }
 
             override fun onCallEnded() {
                 Log.d(TAG, "onCallEnded")
-                audioManager.mode = AudioManager.MODE_NORMAL
-                registered = true
+                setAudioMode(inCall = false)
                 callback.onCallEnded()
             }
 
             override fun onCallFailed(reason: String) {
                 Log.e(TAG, "onCallFailed: $reason")
                 // 通話モードが残ると音声ルーティングが通話用のままになるため戻す
-                audioManager.mode = AudioManager.MODE_NORMAL
+                setAudioMode(inCall = false)
                 callback.onCallFailed(reason)
             }
 
@@ -105,12 +105,11 @@ class SipManager(private val context: Context, private val callback: SipCallback
         })
 
         // NativeSip 初期化・登録
-        nativeSip.init(server, port, user, password, realm)
+        nativeSip.nativeInit(server, port, user, password, realm)
         // 音量（再生ゲイン）を適用
-        val volPct = SipConfig.getVolumePct(context)
-        Log.d(TAG, "applying volume gain=${volPct / 100.0f}")
-        nativeSip.setVolume(volPct / 100.0f)
-        nativeSip.register()
+        Log.d(TAG, "applying volume gain=${volumeGain()}")
+        nativeSip.nativeSetVolume(volumeGain())
+        nativeSip.nativeRegister()
         callback.onDebug("SIP 登録中...")
     }
 
@@ -119,7 +118,7 @@ class SipManager(private val context: Context, private val callback: SipCallback
             callback.onCallFailed("自分自身には発信できません")
             return
         }
-        nativeSip.makeCall(number)
+        nativeSip.nativeMakeCall(number)
     }
 
     // 設定をライブ適用（再初期化せず、baresip を崩さない）
@@ -127,49 +126,46 @@ class SipManager(private val context: Context, private val callback: SipCallback
                        password: String, realm: String, volumePct: Int,
                        accountChanged: Boolean) {
         // 音量ゲインは即時反映
-        nativeSip.setVolume(volumePct / 100.0f)
+        nativeSip.nativeSetVolume(volumePct / 100.0f)
         // アカウント変更時のみ UA を再作成して再登録（通話中の再登録は行わない）
         if (accountChanged) {
-            nativeSip.reregister(SipConfig.buildAor(context))
-            callback.onDebug("設定を適用しました（再登録）")
-        } else {
-            callback.onDebug("設定を適用しました")
+            nativeSip.nativeReregister(SipConfig.buildAor(context))
         }
+        callback.onDebug("設定を適用しました" + if (accountChanged) "（再登録）" else "")
     }
 
     fun answerCall() {
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        nativeSip.answerCall()
+        setAudioMode(inCall = true)
+        nativeSip.nativeAnswerCall()
     }
 
     // ネットワーク復帰時などの再登録（UA は作り直さない）
     fun reregister() {
         Log.d(TAG, "reregister")
-        nativeSip.reregister(SipConfig.buildAor(context))
+        nativeSip.nativeReregister(SipConfig.buildAor(context))
     }
 
     fun endCall() {
-        nativeSip.endCall()
-        audioManager.mode = AudioManager.MODE_NORMAL
+        nativeSip.nativeEndCall()
+        setAudioMode(inCall = false)
     }
 
-    fun sendDtmf(digit: String) {
-        if (digit.isEmpty()) return
-        nativeSip.sendDtmf(digit[0])
+    fun sendDtmf(digit: Char) {
+        nativeSip.nativeSendDtmf(digit)
     }
 
     // マイクのミュート切替（送信音声を無音化）
     fun setMute(mute: Boolean) {
-        nativeSip.setMute(mute)
+        nativeSip.nativeSetMute(mute)
     }
 
-    fun isRegistered(): Boolean = nativeSip.isRegistered()
+    fun isRegistered(): Boolean = nativeSip.nativeIsRegistered()
 
-    fun isInCall(): Boolean = nativeSip.isInCall()
+    fun isInCall(): Boolean = nativeSip.nativeIsInCall()
 
     fun stop() {
-        nativeSip.unregister()
-        nativeSip.destroy()
-        audioManager.mode = AudioManager.MODE_NORMAL
+        nativeSip.nativeUnregister()
+        nativeSip.nativeDestroy()
+        setAudioMode(inCall = false)
     }
 }
