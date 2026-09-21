@@ -1,8 +1,15 @@
 # Third-Party Notices
 
 このリポジトリには、コード（`LICENSE` の MIT が適用される範囲）のほか、
-以下の第三者ライブラリを `kyf42-phone/native/` 配下に同梱しています。
+以下の第三者ライブラリを同梱またはビルド成果物へ組み込んでいます。
 各ライブラリにはそれぞれのライセンスが適用され、MIT より優先します。
+
+## qrcode-generator 2.0.4 — MIT
+
+- 上流: https://github.com/kazuhikoarase/qrcode-generator
+- 用途: `qrgen/` のQRコード生成処理
+- 著作物表示: `Copyright (c) 2009 Kazuhiko Arase`
+- 公開Webアプリに同梱するライセンス本文: `qrgen/public/licenses/qrcode-generator.txt`
 
 ## re / rem / baresip — BSD-3-Clause
 

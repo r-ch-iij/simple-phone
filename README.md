@@ -8,6 +8,7 @@ SIP 電話アプリと関連ドキュメントのリポジトリ。
 
 - `kyf42-phone/` — SIP クライアント本体（Kotlin + NDK/C）
 - `kyf42-apks/` — KYF42 導入用の補助 APK 置き場
+- `qrgen/` — SIP 設定 QR コード生成 Web アプリ（GitHub Pages 対応）
 - `docs/` — KYF42 関連ドキュメント
 - `Dockerfile` / `docker-build.sh` — APK ビルド用
 - `KYF42_disabled_apps.md` — KYF42 の無効化済みアプリ記録
@@ -43,6 +44,8 @@ KYF39 側のソフトキー等は `Build.DEVICE` で切り替えている。
 
 SIP サーバのアドレス・内線番号・パスワード等の実運用値はリポジトリに保管しない。
 設定はアプリの設定画面または QR 読み取りで行う。
+
+QR コード生成 Web アプリの開発・公開手順は `qrgen/README.md` を参照。
 
 ## KYF42 電話アプリ（kyf42-phone）の技術スタック
 
