@@ -9,10 +9,12 @@ android {
 
     defaultConfig {
         applicationId "io.github.r_ch_iij.simplephone"
-        minSdk 28
-        targetSdk 29
-        versionCode 10
-        versionName "3.0"
+        // KYF39 (Android 5.1.1 / API 22) 対応: min/target を 22 に下げる。
+        // targetSdk 22 でランタイムパーミッション無効（インストール時許可）になる。
+        minSdk 22
+        targetSdk 22
+        versionCode 11
+        versionName "3.0-kyf39"
 
         externalNativeBuild {
             cmake {
@@ -51,10 +53,11 @@ android {
         }
     }
 
-    // targetSdk 29 は KYF42 (Android 10) 対応のため意図的に維持。
+    // targetSdk 22 は KYF39 (Android 5.1.1) 対応のため意図的に維持。
     // 本アプリはサイドロード運用（Google Play 非公開）のため Play 要件の lint を無効化。
     lint {
         disable 'ExpiredTargetSdkVersion'
+        disable 'OldTargetApi'
     }
 
     compileOptions {

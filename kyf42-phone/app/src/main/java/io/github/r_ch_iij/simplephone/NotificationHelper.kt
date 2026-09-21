@@ -9,6 +9,7 @@ import android.content.Intent
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.os.Vibrator
 import android.util.Log
 
@@ -16,6 +17,14 @@ import android.util.Log
  * 通知と着信音の管理を担当するヘルパークラス。
  *
  * SipService から通知ロジックを分離し、責務を明確にする。
+ *
+ * KYF39 (API 22) 互換:
+ * - NotificationChannel は API 26+ のみ。API 22 では作成しない
+ * - Notification.Builder(context, channelId) は API 26+ のみ。API 22 では 1 引数版
+ * - getSystemService(Class) は API 23+ のみ。API 22 では文字列版
+ * - PendingIntent.FLAG_IMMUTABLE は API 23+ のみ。API 22 では付けない
+ * - Notification.Action.Builder(Icon, ...) は API 23+ のみ。API 22 では int 版 addAction
+ * - Ringtone.setLooping は API 28+ のみ。API 22 ではループなし
  */
 class NotificationHelper(private val context: Context) {
 
@@ -26,13 +35,29 @@ class NotificationHelper(private val context: Context) {
         const val NOTIFICATION_ID = 1
         private const val INCOMING_NOTIFICATION_ID = NOTIFICATION_ID + 1
         private const val MISSED_NOTIFICATION_ID = NOTIFICATION_ID + 2
+
+        // API 22 では FLAG_IMMUTABLE が存在しない（定数は inline されるため
+        // 参照自体はビルドできるが、古い platform では無視されるビットになる）。
+        // 明示的に分岐して意図を明確にする。
+        fun pendingFlags(): Int {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+        }
     }
 
-    private val notificationManager = context.getSystemService(NotificationManager::class.java)
+    @Suppress("DEPRECATION")
+    private val notificationManager =
+        context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    @Suppress("DEPRECATION")
     private val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
     private var ringtone: Ringtone? = null
 
     fun createNotificationChannel() {
+        // API 26 未満ではチャンネル概念がないため何もしない
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         // 着信通知用（HIGH: フルスクリーン Intent が必要）
         val incomingChannel = NotificationChannel(
             INCOMING_CHANNEL_ID, "着信通知", NotificationManager.IMPORTANCE_HIGH
@@ -52,14 +77,24 @@ class NotificationHelper(private val context: Context) {
         notificationManager.createNotificationChannel(channel)
     }
 
+    @Suppress("DEPRECATION")
     fun buildForegroundNotification(text: String): Notification {
-        return Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle("電話アプリ")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
-            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(context, CHANNEL_ID)
+                .setContentTitle("電話アプリ")
+                .setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .build()
+        } else {
+            Notification.Builder(context)
+                .setContentTitle("電話アプリ")
+                .setContentText(text)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .build()
+        }
     }
 
+    @Suppress("DEPRECATION")
     fun showIncomingCallNotification(callerNumber: String) {
         // 応答 PendingIntent
         val answerIntent = Intent(context, SipService::class.java).apply {
@@ -67,8 +102,7 @@ class NotificationHelper(private val context: Context) {
             putExtra("caller", callerNumber)
         }
         val answerPending = PendingIntent.getService(
-            context, 2, answerIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            context, 2, answerIntent, pendingFlags()
         )
 
         // 拒否 PendingIntent
@@ -76,33 +110,39 @@ class NotificationHelper(private val context: Context) {
             action = "REJECT_CALL"
         }
         val rejectPending = PendingIntent.getService(
-            context, 3, rejectIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            context, 3, rejectIntent, pendingFlags()
         )
 
-        val notification = Notification.Builder(context, INCOMING_CHANNEL_ID)
-            .setContentTitle("着信中")
-            .setContentText(callerNumber)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
-            .setFullScreenIntent(
-                PendingIntent.getActivity(
-                    context, 1,
-                    Intent(context, MainActivity::class.java).apply {
-                        action = SipService.INCOMING_CALL_ACTION
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    },
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                ),
-                true
-            )
-            .addAction(Notification.Action.Builder(
-                null, "応答", answerPending
-            ).build())
-            .addAction(Notification.Action.Builder(
-                null, "拒否", rejectPending
-            ).build())
-            .setAutoCancel(true)
-            .build()
+        val fullScreenPending = PendingIntent.getActivity(
+            context, 1,
+            Intent(context, MainActivity::class.java).apply {
+                action = SipService.INCOMING_CALL_ACTION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            pendingFlags()
+        )
+
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(context, INCOMING_CHANNEL_ID)
+                .setContentTitle("着信中")
+                .setContentText(callerNumber)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setFullScreenIntent(fullScreenPending, true)
+                .addAction(android.R.drawable.ic_menu_call, "応答", answerPending)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "拒否", rejectPending)
+                .setAutoCancel(true)
+                .build()
+        } else {
+            Notification.Builder(context)
+                .setContentTitle("着信中")
+                .setContentText(callerNumber)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setFullScreenIntent(fullScreenPending, true)
+                .addAction(android.R.drawable.ic_menu_call, "応答", answerPending)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "拒否", rejectPending)
+                .setAutoCancel(true)
+                .build()
+        }
         notificationManager.notify(INCOMING_NOTIFICATION_ID, notification)
     }
 
@@ -110,14 +150,24 @@ class NotificationHelper(private val context: Context) {
         notificationManager.cancel(INCOMING_NOTIFICATION_ID)
     }
 
+    @Suppress("DEPRECATION")
     fun showMissedCallNotification(caller: String) {
         cancelIncomingCallNotification()
-        val notification = Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle("不在着信")
-            .setContentText(caller)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setAutoCancel(true)
-            .build()
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(context, CHANNEL_ID)
+                .setContentTitle("不在着信")
+                .setContentText(caller)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setAutoCancel(true)
+                .build()
+        } else {
+            Notification.Builder(context)
+                .setContentTitle("不在着信")
+                .setContentText(caller)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setAutoCancel(true)
+                .build()
+        }
         notificationManager.notify(MISSED_NOTIFICATION_ID, notification)
     }
 
@@ -139,11 +189,15 @@ class NotificationHelper(private val context: Context) {
             }
             if (uri != null && (ringtone == null || ringtone!!.isPlaying.not())) {
                 ringtone = RingtoneManager.getRingtone(context, uri)
-                ringtone?.isLooping = true
+                // setLooping は API 28+ のみ。API 22 では単発再生になる
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ringtone?.isLooping = true
+                }
                 ringtone?.play()
             }
             if (SipConfig.isVibrateEnabled(context)) {
                 val pattern = longArrayOf(0, 500, 400, 500, 400)
+                @Suppress("DEPRECATION")
                 vibrator.vibrate(pattern, 0)
             }
         } catch (e: Exception) {
