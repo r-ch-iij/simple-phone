@@ -8,11 +8,13 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
@@ -26,6 +28,12 @@ class SipService : Service(), SipManager.SipCallback {
         // 着信無応答のタイムアウト。これを過ぎたら自動拒否して
         // リングトーン・バイブを止める（鳴りっぱなしによるバッテリー消費防止）
         private const val RING_TIMEOUT_MS = 45_000L
+        // 再登録のレート制限。NetworkCallback と legacy 受信の二重発火や
+        // 起動直後の重複投入を吸収する（UA 作り直しの連打防止）
+        private const val REREG_MIN_INTERVAL_MS = 15_000L
+        // 登録失敗時のリトライ間隔。指数バックオフの初期間隔と上限
+        private const val REG_RETRY_BASE_MS = 15_000L
+        private const val REG_RETRY_MAX_MS = 300_000L
         const val ACTION_START = "io.github.r_ch_iij.simplephone.ACTION_START"
         const val INCOMING_CALL_ACTION = "io.github.r_ch_iij.simplephone.INCOMING_CALL"
         const val EXTRA_CALLER = "io.github.r_ch_iij.simplephone.EXTRA_CALLER"
@@ -88,30 +96,73 @@ class SipService : Service(), SipManager.SipCallback {
             }
         }
     }
-    // ネットワーク復帰時に SIP 再登録するコールバック（切断→復帰の自動復旧）。
-    // 登録直後の初回 onAvailable（sticky）は無視し、onLost→onAvailable の
-    // 遷移時のみ再登録する（初期登録との競合によるネイティブクラッシュ防止）。
-    // また登録済みの場合のみ再登録する。
+    // ネットワーク復帰時に SIP 再登録するコールバック（切断→復帰の自動復旧と、
+    // 未登録のまま放置された場合の回復）。起動直後の初回 onAvailable（sticky）や
+    // 二重発火の重複は reregisterIfReady のレート制限で吸収する。
+    // 初期登録との競合によるネイティブクラッシュ防止のため、起動直後の再登録は
+    // ensureSipManager が記録した時刻で抑止する。
     @Volatile private var networkRearmNeeded = false
-    // 設定済み＋登録済みの場合のみ再登録する（2箇所のネットワーク復帰検知で共用）
+    // 最後に登録（再登録）を試みた時刻。二重発火の連打抑止用
+    @Volatile private var lastRegAttemptMs = 0L
+    // 登録失敗リトライのバックオフ段数。onRegistered で 0 に戻す
+    @Volatile private var regRetryCount = 0
+    private val regRetryRunnable = Runnable {
+        Log.d(TAG, "registration retry attempt (backoff step $regRetryCount)")
+        reregisterIfReady("registration retry")
+    }
+    // 設定済みなら登録を試みる。未登録のまま放置しないため、登録済みか否かは
+    // 条件にしない（旧実装は登録済み時のみ再登録し、初回失敗が永久に残った）。
+    // レート制限で起動直後の重複投入や二重発火を吸収する
     private fun reregisterIfReady(tag: String) {
-        sipExecutor.execute {
-            try {
-                if (SipConfig.isConfigured(this@SipService) &&
-                    sipManager?.isRegistered() == true
-                ) {
-                    sipManager?.reregister()
+        try {
+            sipExecutor.execute {
+                try {
+                    if (!SipConfig.isConfigured(this@SipService)) return@execute
+                    // 通話中の UA 作り直しは通話断になるため遅延し、終話後に再試行する
+                    if (callActive || sipManager?.isInCall() == true) {
+                        Log.d(TAG, "reregister on $tag deferred (call active)")
+                        networkRearmNeeded = true
+                        return@execute
+                    }
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastRegAttemptMs < REREG_MIN_INTERVAL_MS) {
+                        Log.d(TAG, "reregister on $tag suppressed (rate limit)")
+                        return@execute
+                    }
+                    lastRegAttemptMs = now
+                    val mgr = sipManager
+                    if (mgr == null) {
+                        Log.d(TAG, "reregister on $tag: manager null, (re)creating")
+                        ensureSipManager()
+                    } else {
+                        mgr.reregister()
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "reregister on $tag failed", e)
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "reregister on $tag failed", e)
             }
+        } catch (e: Exception) {
+            // onDestroy 後の予約発火など、executor 終了後の投入は無視する
+            Log.w(TAG, "reregister on $tag rejected", e)
         }
+    }
+    // 登録失敗時は指数バックオフで再登録を予約する（上限で頭打ちし継続する）。
+    // 成功（onRegistered）で解除・リセットする
+    private fun scheduleRegRetry() {
+        mainHandler.removeCallbacks(regRetryRunnable)
+        if (regRetryCount > 8) regRetryCount = 8
+        val delay = minOf(REG_RETRY_BASE_MS * (1L shl regRetryCount), REG_RETRY_MAX_MS)
+        regRetryCount++
+        Log.d(TAG, "registration retry scheduled in ${delay}ms")
+        mainHandler.postDelayed(regRetryRunnable, delay)
     }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            if (!networkRearmNeeded) return
+            // 切断→復帰時は必ず、未登録のままなら初回 sticky も含めて再登録する。
+            // 重複は reregisterIfReady のレート制限で吸収する
+            if (!networkRearmNeeded && sipManager?.isRegistered() == true) return
             networkRearmNeeded = false
-            Log.d(TAG, "network available after loss -> reregister")
+            Log.d(TAG, "network available -> reregister")
             reregisterIfReady("network available")
         }
 
@@ -123,6 +174,7 @@ class SipService : Service(), SipManager.SipCallback {
     private var connectivityManager: ConnectivityManager? = null
     // API 24 未満 (KYF39 / API 22) 用のフォールバック: CONNECTIVITY_ACTION で復帰検知。
     // registerDefaultNetworkCallback は API 24+ のため API 22 では使えない。
+    // 確実のため NetworkCallback と併用する（重複はレート制限で吸収する）
     private var useLegacyNetworkReceiver = false
     private val legacyNetworkReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -131,12 +183,16 @@ class SipService : Service(), SipManager.SipCallback {
                 val info = connectivityManager?.activeNetworkInfo
                 @Suppress("DEPRECATION")
                 if (info != null && info.isConnected) {
+                    if (!networkRearmNeeded && sipManager?.isRegistered() == true) return
+                    networkRearmNeeded = false
                     Log.d(TAG, "legacy network connected -> reregister")
                     reregisterIfReady("legacy network")
                 }
             }
         }
     }
+    // Wi-Fi スリープによる登録断を抑止するロック。取得・解放はメインスレッドのみ
+    private var wifiLock: WifiManager.WifiLock? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): SipService = this@SipService
@@ -167,18 +223,29 @@ class SipService : Service(), SipManager.SipCallback {
                     val request = NetworkRequest.Builder().build()
                     connectivityManager?.registerNetworkCallback(request, networkCallback)
                 } catch (e: Exception) {
-                    // さらに古い端末向け: CONNECTIVITY_ACTION ブロードキャスト
-                    Log.w(TAG, "registerNetworkCallback failed, using legacy receiver", e)
-                    @Suppress("DEPRECATION")
-                    registerReceiver(
-                        legacyNetworkReceiver,
-                        IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION)
-                    )
-                    useLegacyNetworkReceiver = true
+                    Log.w(TAG, "registerNetworkCallback failed", e)
                 }
+                // API 22 (KYF39) では復帰検知を確実にするため legacy 受信も併用する。
+                // 初回 sticky 発火の重複は reregisterIfReady のレート制限で吸収する
+                @Suppress("DEPRECATION")
+                registerReceiver(
+                    legacyNetworkReceiver,
+                    IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION)
+                )
+                useLegacyNetworkReceiver = true
             }
         } catch (e: Exception) {
             Log.w(TAG, "register network callback failed", e)
+        }
+        // Wi-Fi スリープによる切断・未登録放置を抑止する（解放は onDestroy）
+        try {
+            val wm = getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            wifiLock = wm?.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF, "SimplePhone:Sip"
+            )?.also { it.acquire() }
+            Log.d(TAG, "wifi lock acquired: ${wifiLock != null}")
+        } catch (e: Exception) {
+            Log.w(TAG, "wifi lock acquire failed", e)
         }
         // バックグラウンドで SIP 初期化
         sipExecutor.execute { ensureSipManager() }
@@ -212,15 +279,28 @@ class SipService : Service(), SipManager.SipCallback {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(regRetryRunnable)
+        mainHandler.removeCallbacks(ringTimeoutRunnable)
         try {
             if (useLegacyNetworkReceiver) {
                 unregisterReceiver(legacyNetworkReceiver)
-            } else {
-                connectivityManager?.unregisterNetworkCallback(networkCallback)
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "unregister legacy receiver failed", e)
+        }
+        // API24+ では NetworkCallback のみ、API22 系では両方登録しているため
+        // こちらも外す（未登録の場合の例外は無視する）
+        try {
+            connectivityManager?.unregisterNetworkCallback(networkCallback)
         } catch (e: Exception) {
             Log.w(TAG, "unregister networkCallback failed", e)
         }
+        try {
+            wifiLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            Log.w(TAG, "wifi lock release failed", e)
+        }
+        wifiLock = null
         sipExecutor.shutdownNow()
         notificationHelper.stopRinging()
         try {
@@ -240,6 +320,8 @@ class SipService : Service(), SipManager.SipCallback {
 
     private fun ensureSipManager() {
         if (sipManager == null) {
+            // 起動直後の network sticky 発火との重複をレート制限で吸収する
+            lastRegAttemptMs = SystemClock.elapsedRealtime()
             val mgr = SipManager(this, this)
             mgr.start()
             sipManager = mgr
@@ -262,10 +344,15 @@ class SipService : Service(), SipManager.SipCallback {
 
     // ---- SipManager.SipCallback ----
     override fun onRegistered() {
+        // 成功したら失敗リトライを解除・リセットする
+        regRetryCount = 0
+        mainHandler.removeCallbacks(regRetryRunnable)
         notifyListeners { it.onStatus("登録済み") }
     }
 
     override fun onRegistrationFailed(reason: String) {
+        // 放置すると着信不能のままになるためバックオフで再登録を予約する
+        scheduleRegRetry()
         notifyListeners { it.onStatus("登録失敗: $reason") }
     }
 
@@ -315,11 +402,19 @@ class SipService : Service(), SipManager.SipCallback {
     override fun onCallEnded() {
         callActive = false
         endRingingAndNotify { it.onCallEnded() }
+        // 通話中に保留した再登録があれば実行する
+        if (networkRearmNeeded || sipManager?.isRegistered() != true) {
+            reregisterIfReady("call ended")
+        }
     }
 
     override fun onCallFailed(reason: String) {
         callActive = false
         endRingingAndNotify { it.onCallFailed(reason) }
+        // 通話中に保留した再登録があれば実行する
+        if (networkRearmNeeded || sipManager?.isRegistered() != true) {
+            reregisterIfReady("call failed")
+        }
     }
 
     override fun onDebug(message: String) {
