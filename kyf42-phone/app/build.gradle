@@ -84,7 +84,12 @@ android {
 dependencies {
     implementation 'androidx.core:core-ktx:1.10.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.zxing:core:3.4.1'
-    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    // ZXing Core 3.4.x calls Java APIs such as List.sort() that are unavailable on
+    // KYF39 (Android 5.1.1 / API 22) without core-library desugaring. JourneyApps
+    // recommends Core 3.3.0 for API 19-23, so exclude its 3.4.1 transitive dependency.
+    implementation('com.journeyapps:zxing-android-embedded:4.3.0') {
+        transitive = false
+    }
+    implementation 'com.google.zxing:core:3.3.0'
     testImplementation 'junit:junit:4.13.2'
 }
